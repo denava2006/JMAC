@@ -24,14 +24,36 @@ FMS is explicitly out of scope for this phase and is not referenced further.
 
 ### 1.1 Findings that shaped this design
 
-Three facts, established by inspection, contradict assumptions in
-`PROJECT_CONTEXT.md` and are resolved by decisions below.
+Facts established by inspection that contradict assumptions in
+`PROJECT_CONTEXT.md`, and are resolved by decisions below.
 
-**There is no single "current Supabase project."** HRMS and POS run on two
-separate local Supabase stacks, on different ports, with two independent
-`auth.users` tables and no shared schema. The instruction to "continue using the
-current Supabase project" has no single referent. A shared database must be
-established, not adopted.
+**The unified database already exists.** *(Corrected 2026-08-07, during Track 1
+execution. The original finding — that HRMS and POS run on two separate stacks
+with no shared schema — is true of the two apps in `integration/`, whose env
+files were the evidence. It was not the whole picture.)*
+
+A third Supabase stack, `jmac-suite`, has been running on this host since
+2026-08-02 and holds a **70-table unified schema**: HRMS, POS, Finance, and a
+complete role/permission layer. It occupies ports 56321–56327. This is
+substantially the shared database `PROJECT_CONTEXT.md` describes, already built.
+JMAC adopts it. No new schema is authored in Phase 1.
+
+Its architecture, established by inspection:
+
+| Object | Role |
+|---|---|
+| `users` | The real identity table. RLS enabled, 6 policies. |
+| `profiles` | A **view** over `users`, not a table. Maps the new RBAC back to HRMS's legacy `user_role` enum via `hr_role_for(id)` and collapses 4-state `account_status` to `active`/`inactive`. A deliberate compatibility shim so HRMS's existing queries keep working. |
+| `roles` | 11 ranked roles: `system_administrator`, `owner`, `general_manager`, `hr_manager`, `finance_manager`, `pos_manager`, `accountant`, `hr_staff`, `finance_staff`, `cashier`, `employee`. |
+| `permissions` | 79 keyed permissions (`applicant.screen`, `attendance.approve`, …), each bound to a module. |
+| `user_roles` | Many-to-many. One user holds several roles — the seeded `manager@jmac.com` is `hr_manager` + `pos_manager` + `finance_manager`. |
+| `modules` | 4: `core`, `hrms`, `pos`, `finance`, each with path, icon, and sort order. |
+| Helpers | `has_permission()`, `has_module_access()`, `my_permissions()`, `my_roles()`, `is_admin()`, `is_active_staff()`, `is_hr_staff_or_admin()`, `is_hr_manager_or_admin()`, `current_role_rank()`, `prevent_self_role_escalation()` |
+
+The owning project directory could not be located anywhere on this host — no
+`config.toml` names `jmac-suite`. The stack is orphaned from its source, so this
+repository must treat it as **infrastructure it connects to, never infrastructure
+it manages**. See §3.
 
 **POS is multi-tenant; HRMS is single-org.** POS scopes every user to a store
 through `store_memberships`, and its `AuthProvider` refuses sign-in without an
@@ -49,11 +71,17 @@ store-scoped, not global.
 
 | Question | Decision |
 |---|---|
-| Auth backend | New unified JMAC Supabase project with a fresh schema |
-| Role set | 6 roles: `admin`, `hr_manager`, `hr_staff`, `pos_manager`, `cashier`, `employee`. Applicants are a separate non-staff identity, defined in Phase 3 — they are not a `user_role` value and never appear in `profiles` |
-| Permission enforcement (UI) | Static, typed role→capability map |
+| Auth backend | ~~New unified JMAC Supabase project with a fresh schema~~ → **Adopt the existing `jmac-suite` database** (revised 2026-08-07, §1.1) |
+| Role set | ~~6 roles~~ → **the 11 roles already in `public.roles`**, assigned many-to-many through `user_roles`. The originally chosen six are all present; the schema adds `owner`, `general_manager`, `finance_manager`, `accountant`, `finance_staff`, and renames `admin` to `system_administrator`. |
+| Permission enforcement (UI) | ~~Static, typed role→capability map~~ → **the database's 79-permission model**, read once at login via `my_permissions()`. See §4.2. |
 | Dark mode | Token-ready, light palette only shipped |
 | Landing page careers | Full landing page with live `job_postings` data |
+
+Two decisions were revised because their premise changed, not because the
+reasoning was wrong. A static permission map is the better choice when you own
+the schema; it is the wrong choice against a database that already ships 79
+permissions, a `role_permissions` join, and per-user overrides — a hand-written
+map would be a second source of truth guaranteed to drift from the first.
 
 ---
 
@@ -83,13 +111,14 @@ JMAC Enterprise/
 │   ├── utils/
 │   ├── styles/           # tokens.css, index.css
 │   └── assets/
-├── supabase/
-│   ├── config.toml
-│   ├── migrations/
-│   └── seed.sql
+├── tests/
+│   ├── setup.ts
+│   └── db/               # Integration tests against the live jmac-suite stack
 ├── docs/superpowers/specs/
 └── integration/          # Reference only — never modified, git-ignored
 ```
+
+There is deliberately **no `supabase/` directory**. See §3.1.
 
 `integration/` is git-ignored: it contains `node_modules`, `dist`, and a nested
 `.git` (HRMS), none of which belong in this repository's history.
@@ -113,108 +142,91 @@ is **ported** in Phase 4, not copied.
 
 ## 3. Database
 
-A new local Supabase project named `jmac` on **port 56321**. Ports 54321 and
-55321 are occupied by POS and HRMS respectively; all auxiliary ports shift into
-the 563xx band to match.
+JMAC connects to the existing `jmac-suite` stack. **Phase 1 authors no schema
+and runs no migrations.** The tables this phase needs — `users`, `roles`,
+`permissions`, `user_roles`, `modules`, `departments`, `positions`, `branches`,
+`job_postings` — all exist, with RLS policies already in place.
 
-Phase 1 creates only what Phase 1 needs. `employees`, `attendance`, `leave`,
-`payroll`, `products`, `inventory`, `sales`, and `orders` arrive in Phases 3
-and 4.
+| Endpoint | Value |
+|---|---|
+| API | `http://127.0.0.1:56321` |
+| Database | `postgresql://postgres:postgres@127.0.0.1:56322/postgres` |
+| Studio | `http://127.0.0.1:56323` |
+| Anon key | The standard Supabase local development key |
 
-### 3.1 `0001_identity.sql`
+### 3.1 This repository does not manage the stack
 
-```sql
-create type user_role as enum (
-  'admin', 'hr_manager', 'hr_staff', 'pos_manager', 'cashier', 'employee'
-);
-create type account_status as enum ('active', 'inactive');
+`jmac-suite` predates this repository and no project directory on this host
+owns it. Its schema exists only in the running Postgres volume — there are no
+migrations to replay it from.
 
-create table profiles (
-  id            uuid primary key references auth.users(id) on delete cascade,
-  full_name     text not null,
-  email         text not null unique,
-  role          user_role not null default 'employee',
-  status        account_status not null default 'inactive',
-  avatar_url    text,
-  last_login_at timestamptz,
-  created_by    uuid references profiles(id),
-  created_at    timestamptz not null default now(),
-  updated_at    timestamptz not null default now()
-);
-```
+Therefore this repository deliberately contains **no `supabase/` directory**.
+A `supabase/config.toml` here would make `supabase db reset` a single command
+away from dropping 70 tables of live data with no migration set to rebuild
+them. The risk is not hypothetical: `db reset` is the normal way to apply a
+migration, and it is destructive by design.
 
-Adapted from HRMS `20260713200311_initial_schema.sql:54`. Two deliberate
-differences: the role enum is widened to six values, and `employee_id uuid` is
-**omitted** rather than declared without a foreign key — the column is added in
-Phase 3 alongside the `employees` table it points at, so the schema never
-carries a dangling reference.
+Consequences, all intentional:
 
-`status` defaults to `inactive`, following HRMS's
-`20260715134502_default_new_profiles_to_inactive.sql`. A new signup cannot act
-until an administrator activates it.
+- No `db:reset`, `db:start`, or `db:stop` scripts in `package.json`.
+- Type generation runs against the database URL directly, not `--local`.
+- Schema changes in later phases require a decision about migration ownership
+  that Phase 1 does not make.
 
-Also in this migration:
+### 3.2 What Phase 1 reads
 
-- `handle_new_user()` trigger on `auth.users` inserting the matching `profiles` row
-- `is_admin()`, `has_role(user_role[])`, `is_active()` — `security definer`,
-  `stable`, `set search_path = public`, following HRMS's hardening migrations
-- A role-escalation guard: only `is_admin()` may change `profiles.role`
-- RLS enabled on `profiles`; a user reads and updates their own row, admins read all
+**Identity.** `public.users` is the identity table. `public.profiles` is a view
+over it, shaped for HRMS compatibility. The application reads `users` for its
+own queries and treats `profiles` as legacy surface.
 
-### 3.2 `0002_org.sql`
+**Authorization.** A signed-in user's roles come from `user_roles` joined to
+`roles`; their effective permissions come from the `my_permissions()` helper,
+which resolves `role_permissions` plus any per-user overrides in
+`user_permissions`.
 
-`departments`, `positions`, and `branches` — required as foreign keys by
-`job_postings`, and shared by every later module. Shapes are taken from HRMS
-`initial_schema.sql:121` and `:129`. `branches` is new: HRMS treats branches as
-a lookup, and POS's `stores` will map onto it in Phase 4.
-
-### 3.3 `0003_recruitment_public.sql`
+**Public careers.** `job_postings` already carries the exact policy the landing
+page needs:
 
 ```sql
-create type employment_type      as enum ('full_time','part_time','contract','internship');
-create type job_posting_status   as enum ('draft','open','closed');
-
-create table job_postings (
-  id              uuid primary key default gen_random_uuid(),
-  title           text not null,
-  department_id   uuid not null references departments(id),
-  position_id     uuid not null references positions(id),
-  branch_id       uuid references branches(id),
-  description     text not null,
-  requirements    text,
-  employment_type employment_type not null default 'full_time',
-  vacancies       integer not null default 1 check (vacancies > 0),
-  status          job_posting_status not null default 'draft',
-  posted_by       uuid references profiles(id),
-  date_posted     timestamptz,
-  closing_date    date,
-  created_at      timestamptz not null default now(),
-  updated_at      timestamptz not null default now()
-);
+anon_view_open_postings | SELECT | anon | using (status = 'open')
 ```
 
-Adapted from `initial_schema.sql:153`, plus `branch_id` so a posting states
-where the job is.
+`departments` and `positions` carry matching anon-read policies
+(`departments_read_anon`, `anon_view_positions`), so the careers page can join
+for names. Anything the page can read is already open — it never filters by
+status client-side.
 
-RLS grants `anon` and `authenticated` select **only** where `status = 'open'`,
-following HRMS's `20260715030348_recruitment_public_access.sql`. The landing
-page therefore never filters by status client-side — anything it can read is
-already open. Writes are restricted to `hr_staff` and `admin`, matching
-`canPostJobs()` in HRMS `roles.ts`.
+One schema difference from HRMS worth noting: `job_postings` has **no `title`
+column**. The title comes from `positions.title` through the join. HRMS dropped
+that column in `20260715193600_drop_job_postings_title.sql` and `jmac-suite`
+inherited the corrected shape.
 
-`applicants`, `applications`, and the `submit_job_application` RPC are **not**
-in Phase 1. The landing page lists positions and links to a "Careers" detail
-view; the application form itself is Phase 3.
+### 3.3 Seeded accounts
 
-### 3.4 `seed.sql`
+Six accounts exist, with roles assigned through `user_roles`:
 
-One admin account, three departments, four positions (HR Manager, HR Staff,
-Store Manager, Cashier), one branch, and two `open` job postings — Cashier and
-Manager, as the brief names. Seeded accounts for each of the six roles so the
-permission matrix is manually verifiable.
+| Email | Roles |
+|---|---|
+| `admin@jmac.com` | `system_administrator` |
+| `owner@jmac.com` | `owner` |
+| `manager@jmac.com` | `hr_manager`, `pos_manager`, `finance_manager` |
+| `staff@jmac.com` | `hr_staff`, `finance_staff` |
+| `cashier@jmac.com` | `cashier` |
+| `accountant@jmac.com` | `accountant` |
 
----
+Passwords are not recorded in this spec. Track 3 needs working credentials to
+verify the permission matrix; obtaining or resetting them is a Track 3 step.
 
+### 3.4 Open item: `job_postings` is empty
+
+The table has zero rows, so the landing page's Open Positions section will
+render its empty state rather than the Cashier and Manager listings the brief
+names.
+
+Seeding two postings means **writing to a live database this project does not
+own**. Phase 1 does not do it. The decision — seed it, or ship the empty state
+until Recruitment lands in Phase 3 — belongs to Track 4, where the careers
+section is actually built.
 ## 4. Authentication
 
 ### 4.1 AuthProvider
@@ -240,58 +252,62 @@ vars are missing.
 
 ### 4.2 Permissions
 
-`src/lib/permissions.ts` exports a `Permissions` object derived from
-`user_role`, merging two existing patterns: the predicate style of HRMS
-`roles.ts` and the capability-object shape of POS `auth.tsx`.
+*(Revised 2026-08-07 — see §1.2. The original design specified a hand-written
+static map. The adopted database already ships 79 permissions, a
+`role_permissions` join, and per-user overrides; a second hand-written source of
+truth would drift from the first on its first schema change.)*
+
+Authorization is read from the database, not declared in TypeScript.
+
+`src/services/authorization.ts` exposes one query, run once at sign-in and
+cached by TanStack Query for the session:
 
 ```ts
-export interface Permissions {
-  // Module visibility — drives sidebar and route guards
-  canAccessPeople: boolean
-  canAccessSales: boolean
-  canAccessReports: boolean
-  canAccessAdministration: boolean
-  canAccessSettings: boolean
-  // Actions — HRMS separation of duties, preserved
-  canApproveWork: boolean       // payroll release, leave decisions  → manager
-  canPostJobs: boolean          // job board                          → hr_staff
-  canPreparePayroll: boolean    // generate figures                   → hr_staff
-  canScreenApplicants: boolean  // qualify/reject                     → hr_manager
-  // POS actions
-  canUsePOS: boolean
-  canManageInventory: boolean
-  canManageProducts: boolean
-  canViewProfit: boolean
-  // Cross-cutting
-  canManageUsers: boolean
-  canViewAuditLogs: boolean
-}
+/** Effective permission keys for the signed-in user: their roles' permissions
+ *  from role_permissions, plus any per-user grants in user_permissions. */
+export async function fetchMyPermissions(): Promise<PermissionKey[]>
+
+/** Role keys held by the signed-in user. A user may hold several — the seeded
+ *  manager holds hr_manager, pos_manager, and finance_manager. */
+export async function fetchMyRoles(): Promise<RoleKey[]>
 ```
 
-The separation of duties HRMS encodes is preserved deliberately: an HR Manager
-approves payroll and therefore must not generate it, and HR Staff runs the job
-board while HR Manager screens applicants. These are not arbitrary — they keep
-one person off both sides of a review.
+Both wrap the database's own `my_permissions()` and `my_roles()` helpers, so the
+answer comes from the same place RLS gets it.
 
-| | admin | hr_manager | hr_staff | pos_manager | cashier | employee |
-|---|---|---|---|---|---|---|
-| People | ✓ | ✓ | ✓ | | | |
-| Sales | ✓ | | | ✓ | ✓ | |
-| Reports | ✓ | ✓ | | ✓ | | |
-| Administration | ✓ | | | | | |
-| Settings | ✓ | ✓ | | ✓ | | |
-| Approve work | ✓ | ✓ | | | | |
-| Post jobs | ✓ | | ✓ | | | |
-| Prepare payroll | ✓ | | ✓ | | | |
-| Screen applicants | ✓ | ✓ | | | | |
-| Use POS | ✓ | | | ✓ | ✓ | |
-| Manage inventory | ✓ | | | ✓ | | |
-| View profit | ✓ | | | ✓ | | |
-| Manage users | ✓ | | | | | |
+`src/lib/permissions.ts` holds only the derivation on top of that data — no
+role→capability table:
 
-This map is the single source of truth behind both the sidebar and the route
-guards. It is **not** a security boundary — RLS is. Hiding a module is never
-the only thing stopping someone.
+```ts
+export type PermissionKey = string  // narrowed by codegen, §4.2.1
+
+export function can(perms: Set<PermissionKey>, key: PermissionKey): boolean
+export function canAny(perms: Set<PermissionKey>, keys: PermissionKey[]): boolean
+```
+
+Sidebar entries and route guards each declare the permission key they require,
+and are filtered through `can()`. A role that lacks `sale.create` never renders
+a Sales entry.
+
+#### 4.2.1 Typing the permission keys
+
+`PermissionKey` is generated from `select key from public.permissions` into a
+string-literal union, alongside `database.types.ts`. A typo in a permission key
+then fails compilation rather than silently denying access at runtime. The
+generator re-runs whenever the schema does.
+
+#### 4.2.2 What this is not
+
+Permission checks in the client are **presentation**, not security. RLS and the
+database's `has_permission()` are the real boundary. Hiding a module is never
+the only thing stopping someone — every policy in `jmac-suite` enforces the same
+split independently.
+
+The separation of duties HRMS encodes survives this change intact, because it
+lives in the database: `applicant.screen` belongs to `hr_manager` while the job
+board belongs to `hr_staff`, and `is_hr_manager_or_admin()` gates payroll
+release. An HR Manager approves payroll and therefore must not generate it —
+that rule is enforced by policy, not by the UI's opinion of it.
 
 ### 4.3 Routes and guards
 
@@ -454,10 +470,18 @@ JMAC components. It is presentation, not a live dashboard.
 
 Vitest + Testing Library. Phase 1 tests cover logic, not pixels:
 
-- `permissions.ts` — the full role→capability matrix in §4.2, asserted exhaustively
-- Route guards — anonymous redirect, insufficient-permission 403, active-status check
+- `permissions.ts` — `can()` / `canAny()` against fixture permission sets
+- Authorization services — `fetchMyPermissions` and `fetchMyRoles` shape and caching
+- Route guards — anonymous redirect, insufficient-permission 403, inactive-status check
 - `isPastClosingDate` / `isAcceptingApplications` — boundary dates
 - `DataTable` — sorting, filtering, and pagination against a fixture
+
+Integration tests in `tests/db/` run against the live `jmac-suite` stack and are
+**read-only**. They assert the contracts the application depends on rather than
+setting up their own state: that anon reads open postings and nothing else, that
+anon cannot read `users`, that `departments` and `positions` are joinable
+anonymously, and that a signed-in user's `my_permissions()` resolves. They never
+insert, update, or delete.
 
 ### 8.1 Success criteria
 
@@ -466,16 +490,19 @@ Phase 1 is done when all of the following hold:
 1. `npx tsc -b` reports no errors
 2. `npm run build` succeeds
 3. `npm test` passes
-4. `npx supabase db reset` applies all three migrations and the seed cleanly
-5. Signing in as each of the six seeded roles shows exactly the navigation the
-   §4.2 matrix predicts, and no more
-6. A signed-out visitor loads `/` and sees the two seeded job postings rendered
-   from the database
-7. A deactivated account is refused at login with an explanatory message
-8. The app renders correctly at 1440px, 768px, and 375px with no horizontal scroll
-9. No file under `integration/` has been modified — verified by comparing a
-   recursive file listing with modification timestamps taken before Track 1
-   begins
+4. `npm run test:db` passes against the running `jmac-suite` stack
+5. `src/types/database.types.ts` is generated from the live schema and compiles
+6. Signing in as each seeded account shows exactly the navigation its
+   `my_permissions()` result predicts, and no more
+7. A signed-out visitor loads `/` and the Open Positions section renders the
+   live `job_postings` result — listings if seeded, the empty state if not (§3.4)
+8. An inactive account is refused at login with an explanatory message
+9. The app renders correctly at 1440px, 768px, and 375px with no horizontal scroll
+10. No file under `integration/` has been modified — verified by comparing a
+    recursive file listing with modification timestamps taken before Track 1
+    begins
+11. **No row in `jmac-suite` was created, altered, or deleted by Phase 1** —
+    verified by row counts taken before Track 1 and again at the end
 
 ---
 
@@ -486,10 +513,10 @@ in a working, verifiable state.
 
 | Track | Contents | Verified by |
 |---|---|---|
-| 1. Foundation | Vite app, tooling, tokens, Supabase project, three migrations, seed | Criteria 1, 2, 4 |
+| 1. Foundation | Vite app, tooling, design tokens, connection to `jmac-suite`, generated types, typed client, read-only DB contract tests | Criteria 1–5, 11 |
 | 2. Components | 28 shared components + tests | Criteria 1–3 |
-| 3. Layouts & auth | Three layouts, sidebar, header, AuthProvider, permissions, guards, three auth pages | Criteria 5, 7, 8 |
-| 4. Landing & careers | Nine landing sections, careers list and detail, live data | Criteria 6, 8 |
+| 3. Layouts & auth | Three layouts, sidebar, header, AuthProvider, authorization services, guards, three auth pages | Criteria 6, 8, 9 |
+| 4. Landing & careers | Nine landing sections, careers list and detail, live data; decide §3.4 | Criteria 7, 9 |
 
 ---
 
@@ -498,12 +525,14 @@ in a working, verifiable state.
 Named here so they are not silently assumed:
 
 - Any modification to `integration/`
-- FMS, in any form
+- **Any schema change to `jmac-suite`** — no migrations, no `db reset`, no DDL
+- **Any write to `jmac-suite` data**, including seeding `job_postings` (§3.4)
+- FMS and the `finance_*` tables, in any form
 - Module dashboards — there is one dashboard, permission-driven
-- `employees`, `attendance`, `leave`, `payroll` schemas (Phase 3)
-- `products`, `inventory`, `orders`, `sales` schemas (Phase 4)
+- Building UI over `employees`, `attendance`, `leave`, `payroll` (Phase 3)
+- Building UI over `products`, `inventory`, `orders`, `sales` (Phase 4)
 - Applicant accounts, resume upload, application submission and tracking (Phase 3)
 - Reconciling POS `store_memberships` with `employees` (Phase 4)
-- Migrating existing HRMS or POS data into the JMAC database
+- Deciding who owns migrations for `jmac-suite` going forward (§3.1)
 - Dark palette values
 - Deployment to Vercel
