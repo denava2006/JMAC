@@ -15,13 +15,30 @@ beforeAll(() => {
 const anon = () => createClient(URL, ANON as string)
 
 describe('public careers contract', () => {
+  // job_postings is empty in this environment (db-baseline.txt records
+  // job_postings=0), and Postgres RLS denies silently: a missing or
+  // misconfigured policy still returns `{ data: [], error: null }` rather
+  // than an error. With no rows reaching a row-level check, this block can
+  // only prove that anon holds the base SELECT grant, that the queried
+  // schema (columns, embedded relations) is exposed as expected, and that
+  // the departments/positions foreign keys resolve. It does NOT prove the
+  // anon_view_open_postings policy itself is doing anything — that needs
+  // real open and non-open rows to tell a leak from a lockdown.
   it('lets an anonymous visitor query job_postings', async () => {
     const { error } = await anon().from('job_postings').select('id, status')
     expect(error).toBeNull()
   })
 
   it('exposes only open postings to an anonymous visitor', async () => {
-    const { data } = await anon().from('job_postings').select('status')
+    const { data, error } = await anon().from('job_postings').select('status')
+    expect(error).toBeNull()
+    expect(Array.isArray(data)).toBe(true)
+    // job_postings has 0 rows today, so .every() over an empty array is
+    // vacuously true — this cannot yet catch an RLS regression (e.g.
+    // anon_view_open_postings dropped, or replaced with `using (true)`,
+    // exposing draft/closed postings publicly). The error/Array.isArray
+    // checks above are what this test can actually fail on right now; the
+    // .every() below only gains real power once open listings exist.
     expect((data ?? []).every((row) => row.status === 'open')).toBe(true)
   })
 
@@ -41,6 +58,7 @@ describe('public careers contract', () => {
     expect(departments.error).toBeNull()
     expect(positions.error).toBeNull()
     expect(departments.data?.length).toBeGreaterThan(0)
+    expect(positions.data?.length).toBeGreaterThan(0)
   })
 })
 
