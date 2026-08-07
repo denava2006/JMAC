@@ -15,10 +15,18 @@
 begin;
 
 -- ---------------------------------------------------------------------------
--- 1. Passwords for the two existing POS demo accounts.
+-- 1. Passwords for existing accounts. No roles are changed here.
+--
+--    admin@jmac.com already holds the system_administrator role, which carries
+--    all 79 permissions -- verified, not assumed. It needed a password, not a
+--    new account, so this sets one rather than creating a second full-access
+--    identity that would then need keeping in step.
+--
 --    manager@jmac.com also holds hr_manager and finance_manager, so its
 --    sidebar shows more than POS. Narrowing that is a separate decision.
 -- ---------------------------------------------------------------------------
+update auth.users set encrypted_password = crypt('Admin123', gen_salt('bf'))
+  where email = 'admin@jmac.com';
 update auth.users set encrypted_password = crypt('Manager123', gen_salt('bf'))
   where email = 'manager@jmac.com';
 update auth.users set encrypted_password = crypt('Cashier123', gen_salt('bf'))
