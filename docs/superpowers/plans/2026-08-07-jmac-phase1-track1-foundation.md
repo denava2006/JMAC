@@ -4,11 +4,11 @@
 
 **Goal:** Stand up the JMAC application shell and design tokens, and connect them to the existing `jmac-suite` database — the foundation every later track builds on.
 
-**Architecture:** A Vite + React 19 app at the repository root with `integration/` excluded from compilation and file watching. Design tokens live in two CSS layers — raw brand values in `:root`, semantic aliases in Tailwind v4's `@theme inline` — so no component ever holds a hex literal. The database is the already-running `jmac-suite` stack on port 56321: this repository connects to it, generates types from it, and asserts its contracts, but never manages or writes to it.
+**Architecture:** A Vite + React 19 app at the repository root with `integration/` excluded from compilation and file watching. Design tokens live in three CSS layers — raw brand values in `:root`, the elevation scale in a plain `@theme` block, and semantic aliases in Tailwind v4's `@theme inline` — so no component ever holds a hex literal. The database is the already-running `jmac-suite` stack on port 56321: this repository connects to it, generates types from it, and asserts its contracts, but never manages or writes to it.
 
 > **Revised mid-execution, 2026-08-07.** Tasks 1–3 shipped as written. Tasks 4–9 originally created a new Supabase project with three migrations and a seed; that work was voided when execution found `jmac-suite` already running with the unified 70-table schema. See "Tasks 4–9 superseded" below and spec §1.1.
 
-**Tech Stack:** React 19.2 · TypeScript 6 · Vite 8 · Tailwind CSS v4 (`@tailwindcss/vite`) · Vitest 3 + Testing Library · Supabase CLI 2.109 · PostgreSQL 17 · oxlint
+**Tech Stack:** React 19.2 · TypeScript 6 · Vite 8 · Tailwind CSS v4 (`@tailwindcss/vite`) · Vitest 4 + Testing Library · Supabase CLI 2.109 · PostgreSQL 17 · oxlint
 
 **Source spec:** [2026-08-07-jmac-phase1-foundation-design.md](../specs/2026-08-07-jmac-phase1-foundation-design.md)
 
@@ -35,7 +35,7 @@
 | `index.html` | App entry document |
 | `src/main.tsx` | React root |
 | `src/app/App.tsx` | Application shell — placeholder in Track 1, replaced by the router in Track 3 |
-| `src/styles/tokens.css` | Raw brand values (`:root`) + semantic aliases (`@theme inline`) |
+| `src/styles/tokens.css` | Raw brand values (`:root`) + elevation scale (`@theme`) + semantic aliases (`@theme inline`) |
 | `src/styles/index.css` | Tailwind import, font imports, base layer |
 | `src/lib/utils.ts` | `cn()` class merger |
 | `src/lib/supabase.ts` | Typed Supabase client |
@@ -64,6 +64,8 @@ There is deliberately **no `supabase/` directory**. See "Constraint that governs
 
 Dependencies are held to what Track 1 needs. Radix primitives arrive in Track 2, router and query in Track 3 — installing them now would be speculative.
 
+> **This block is the final shipped set, not the set Task 1 originally wrote.** The original had `db:start`, `db:stop` and `db:reset` alongside a `--local` `db:types`. Task 4 deleted them once execution found `jmac-suite` already running: `supabase db reset` would drop 70 tables of live data that no migration set on this host can rebuild. They are removed here rather than left for Task 4 to undo, so that an agent working top-to-bottom never writes them to disk at all. See Task 4 Step 1.
+
 ```json
 {
   "name": "jmac",
@@ -74,15 +76,12 @@ Dependencies are held to what Track 1 needs. Radix primitives arrive in Track 2,
     "dev": "vite",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
-    "lint": "oxlint src",
+    "lint": "oxlint src tests vite.config.ts vitest.config.ts vitest.db.config.ts",
     "typecheck": "tsc -b",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:db": "vitest run --config vitest.db.config.ts",
-    "db:start": "supabase start",
-    "db:stop": "supabase stop",
-    "db:reset": "supabase db reset",
-    "db:types": "supabase gen types typescript --local > src/types/database.types.ts"
+    "db:types": "supabase gen types typescript --db-url postgresql://postgres:postgres@127.0.0.1:56322/postgres > src/types/database.types.ts"
   },
   "dependencies": {
     "@fontsource/ibm-plex-mono": "^5.2.7",
@@ -108,10 +107,12 @@ Dependencies are held to what Track 1 needs. Radix primitives arrive in Track 2,
     "supabase": "^2.109.1",
     "typescript": "~6.0.2",
     "vite": "^8.1.1",
-    "vitest": "^3.2.4"
+    "vitest": "^4.1.10"
   }
 }
 ```
+
+> No `overrides` block. An earlier revision pinned `vite` there to reconcile `@vitejs/plugin-react@6` (needs vite `^8`) with `vitest@3` (supports `^5 || ^6 || ^7`), which handed Vitest an unsupported major and caused it to silently discard its own transform options. `vitest@4` declares `vite: ^6 || ^7 || ^8`, so the conflict is gone at the root.
 
 - [ ] **Step 2: Write `vite.config.ts`**
 
@@ -161,7 +162,7 @@ export default defineConfig({
     "target": "es2023",
     "lib": ["ES2023", "DOM", "DOM.Iterable"],
     "module": "esnext",
-    "types": ["vite/client"],
+    "types": ["vite/client", "node"],
     "skipLibCheck": true,
     "paths": { "@/*": ["./src/*"] },
     "moduleResolution": "bundler",
@@ -177,7 +178,7 @@ export default defineConfig({
     "noFallthroughCasesInSwitch": true,
     "noUncheckedIndexedAccess": true
   },
-  "include": ["src"],
+  "include": ["src", "tests"],
   "exclude": ["integration"]
 }
 ```
@@ -276,7 +277,9 @@ export default function App() {
 `.env.example`:
 
 ```
-# Populate from `npm run db:start` output, then copy this file to `.env`.
+# The `jmac-suite` stack is managed outside this repository. If it is not
+# running, start its containers with `docker start supabase_db_jmac-suite`
+# (and siblings) -- never `supabase start`. Copy this file to `.env`.
 VITE_SUPABASE_URL=http://127.0.0.1:56321
 VITE_SUPABASE_ANON_KEY=
 ```
@@ -318,19 +321,31 @@ git commit -m "chore: scaffold JMAC Vite + React 19 application"
 
 ```ts
 import path from 'node:path'
+import { loadEnv } from 'vite'
 import { defineConfig } from 'vitest/config'
 import react from '@vitejs/plugin-react'
+
+const env = loadEnv('test', process.cwd(), 'VITE_')
 
 export default defineConfig({
   plugins: [react()],
   resolve: {
-    alias: { '@': path.resolve(__dirname, './src') },
+    alias: { '@': path.resolve(import.meta.dirname, './src') },
   },
   test: {
     environment: 'jsdom',
     globals: true,
     setupFiles: ['./tests/setup.ts'],
     exclude: ['**/node_modules/**', '**/integration/**', 'tests/db/**'],
+    env: {
+      // Fallbacks so the unit suite runs on a fresh clone or in CI, where the
+      // git-ignored .env does not exist. src/lib/supabase.ts throws at import
+      // time when either variable is missing, so without these the first test
+      // that transitively imports it fails during collection rather than for
+      // any reason to do with the test. A real .env still takes precedence.
+      VITE_SUPABASE_URL: env.VITE_SUPABASE_URL ?? 'http://127.0.0.1:56321',
+      VITE_SUPABASE_ANON_KEY: env.VITE_SUPABASE_ANON_KEY ?? 'test-anon-key',
+    },
   },
 })
 ```
@@ -422,10 +437,13 @@ CSS cannot be unit-tested meaningfully in jsdom, but the token *contract* can. T
 
 ```ts
 import { readFileSync } from 'node:fs'
-import { resolve } from 'node:path'
-import { describe, expect, it } from 'vitest'
+import { createRequire } from 'node:module'
+import { dirname, resolve } from 'node:path'
+import { compile } from 'tailwindcss'
+import { beforeAll, describe, expect, it } from 'vitest'
 
-const tokens = readFileSync(resolve(__dirname, 'tokens.css'), 'utf8')
+const tokensPath = resolve(__dirname, 'tokens.css')
+const tokens = readFileSync(tokensPath, 'utf8')
 
 const SEMANTIC_TOKENS = [
   '--color-background',
@@ -437,6 +455,7 @@ const SEMANTIC_TOKENS = [
   '--color-accent',
   '--color-heading',
   '--color-body',
+  '--color-muted',
   '--color-success',
   '--color-warning',
   '--color-error',
@@ -449,11 +468,14 @@ const BRAND_VALUES: Record<string, string> = {
   '--jmac-sky': '#38BDF8',
   '--jmac-canvas': '#F8FAFC',
   '--jmac-surface': '#FFFFFF',
+  '--jmac-mist': '#F1F5F9',
   '--jmac-line': '#E2E8F0',
   '--jmac-body': '#64748B',
   '--jmac-success': '#22C55E',
   '--jmac-warning': '#F59E0B',
   '--jmac-error': '#EF4444',
+  '--jmac-on-dark': '#FFFFFF',
+  '--jmac-on-light': '#0F172A',
 }
 
 describe('design tokens', () => {
@@ -474,6 +496,104 @@ describe('design tokens', () => {
     expect(tokens).toMatch(/--radius:\s*0\.5rem;/)
   })
 })
+
+// Everything above matches strings in tokens.css. That is not enough on its
+// own: the --shadow-* trio was declared in :root rather than in an @theme
+// block for the whole of Track 1, so Tailwind never saw it and .shadow-sm
+// shipped Tailwind's stock (much heavier) default -- while every assertion
+// above passed. These tests compile the real stylesheet with Tailwind and
+// assert the utilities components will actually receive.
+const require = createRequire(import.meta.url)
+const tailwindEntry = resolve(
+  dirname(require.resolve('tailwindcss/package.json')),
+  'index.css'
+)
+
+async function loadStylesheet(id: string, base: string) {
+  const path = id === 'tailwindcss' ? tailwindEntry : resolve(base, id)
+  return { path, base: dirname(path), content: readFileSync(path, 'utf8') }
+}
+
+const UTILITIES = [
+  'bg-background',
+  'bg-surface',
+  'bg-muted',
+  'bg-primary',
+  'bg-accent',
+  'text-primary-foreground',
+  'text-accent-foreground',
+  'text-warning-foreground',
+  'shadow-sm',
+  'shadow-md',
+  'shadow-lg',
+]
+
+describe('compiled Tailwind utilities', () => {
+  let css = ''
+
+  beforeAll(async () => {
+    const compiler = await compile(`@import 'tailwindcss';\n${tokens}`, {
+      base: dirname(tokensPath),
+      loadStylesheet,
+    })
+    css = compiler.build(UTILITIES)
+  })
+
+  const rule = (selector: string) => {
+    const start = css.indexOf(`${selector} {`)
+    expect(start, `${selector} was not emitted by Tailwind`).toBeGreaterThan(-1)
+    return css.slice(start, css.indexOf('}', start) + 1)
+  }
+
+  it('resolves .bg-primary to the navy brand variable', () => {
+    expect(rule('.bg-primary')).toContain('var(--jmac-navy)')
+  })
+
+  it('resolves .bg-accent to the sky brand variable', () => {
+    expect(rule('.bg-accent')).toContain('var(--jmac-sky)')
+  })
+
+  // Finding 7: --color-muted used to alias --jmac-canvas, making bg-muted
+  // invisible against the page. Skeleton, EmptyState, inactive Tabs and table
+  // zebra striping all depend on these two resolving differently.
+  it('gives .bg-muted a surface distinguishable from .bg-background', () => {
+    const muted = rule('.bg-muted')
+    const background = rule('.bg-background')
+    expect(muted).toContain('var(--jmac-mist)')
+    expect(background).toContain('var(--jmac-canvas)')
+    expect(muted.replace('.bg-muted', '')).not.toBe(
+      background.replace('.bg-background', '')
+    )
+  })
+
+  // Finding 8: foreground tokens must not alias surface brand variables, or a
+  // future dark palette flips button text along with the card colour.
+  it('routes foreground utilities through the on-dark/on-light variables', () => {
+    expect(rule('.text-primary-foreground')).toContain('var(--jmac-on-dark)')
+    expect(rule('.text-accent-foreground')).toContain('var(--jmac-on-light)')
+    expect(rule('.text-warning-foreground')).toContain('var(--jmac-on-light)')
+  })
+
+  // Finding 1: this is the assertion whose absence let the dead shadow scale
+  // ship. Tailwind resolves shadow values at build time, so the only proof is
+  // the compiled declaration.
+  it.each([
+    ['.shadow-sm', '0 1px 2px 0', 'rgb(15 23 42 / 0.04)'],
+    ['.shadow-md', '0 2px 8px -1px', 'rgb(15 23 42 / 0.08)'],
+    ['.shadow-lg', '0 8px 24px -4px', 'rgb(15 23 42 / 0.10)'],
+  ])('compiles %s to the JMAC elevation value', (selector, geometry, colour) => {
+    const declaration = rule(selector)
+    expect(declaration).toContain(geometry)
+    expect(declaration).toContain(colour)
+  })
+
+  it('does not fall back to any of Tailwind stock shadow scale', () => {
+    // Tailwind's defaults are all rgb(0 0 0 / ...). JMAC's are all slate-900.
+    for (const selector of ['.shadow-sm', '.shadow-md', '.shadow-lg']) {
+      expect(rule(selector)).not.toContain('rgb(0 0 0')
+    }
+  })
+})
 ```
 
 - [ ] **Step 2: Run the test to verify it fails**
@@ -483,7 +603,9 @@ Expected: FAIL — `ENOENT: no such file or directory ... tokens.css`.
 
 - [ ] **Step 3: Write `src/styles/tokens.css`**
 
-Two layers. `:root` holds brand values; `@theme inline` gives them meaning. Components only ever reference the semantic layer, which is what makes a dark palette a later addition to this one file rather than a sweep through every component.
+Three blocks. `:root` holds brand values; a plain `@theme` holds the elevation scale; `@theme inline` gives the colours meaning. Components only ever reference the semantic layer, which is what makes a dark palette a later addition to this one file rather than a sweep through every component.
+
+> The shadows must sit in a `@theme` block, not in `:root`. Tailwind builds utilities only from `@theme`, so `--shadow-*` declared in `:root` is dead CSS and `.shadow-sm` silently emits Tailwind's much heavier stock value. Likewise `--jmac-on-dark` / `--jmac-on-light` exist so that `*-foreground` tokens do not alias surface colours, which a dark palette would flip.
 
 ```css
 :root {
@@ -493,18 +615,34 @@ Two layers. `:root` holds brand values; `@theme inline` gives them meaning. Comp
   --jmac-sky: #38BDF8;
   --jmac-canvas: #F8FAFC;
   --jmac-surface: #FFFFFF;
+  --jmac-mist: #F1F5F9;
   --jmac-line: #E2E8F0;
   --jmac-body: #64748B;
   --jmac-success: #22C55E;
   --jmac-warning: #F59E0B;
   --jmac-error: #EF4444;
 
+  /* Text that rides on a dark fill (navy button, error toast) and text that
+     rides on a light fill (sky accent, amber badge). These are deliberately
+     NOT --jmac-surface / --jmac-navy: those two name surface colours, which a
+     dark palette flips. Foreground text must not flip with them, or a primary
+     button turns dark-on-navy. Keeping them separate makes a future dark
+     block a one-file addition. */
+  --jmac-on-dark: #FFFFFF;
+  --jmac-on-light: #0F172A;
+
   /* Squarer than Harmony Suite's 0.75rem. The brief names SAP Fiori and
      Microsoft 365, which are less rounded. */
   --radius: 0.5rem;
+}
 
-  /* Three levels only -- PROJECT_CONTEXT.md rejects large shadows, so
-     borders carry most of the separation. */
+/* Shadows live in a real @theme block, not in :root. Tailwind only builds
+   utilities from @theme, so declaring --shadow-* in :root leaves .shadow-sm
+   emitting Tailwind's stock (and much heavier) default while the JMAC values
+   sit unused. Three levels only -- PROJECT_CONTEXT.md rejects large shadows,
+   so borders carry most of the separation. Non-inline so Tailwind owns the
+   values; tokens.test.ts asserts the compiled output, not this text. */
+@theme {
   --shadow-sm: 0 1px 2px 0 rgb(15 23 42 / 0.04);
   --shadow-md: 0 2px 8px -1px rgb(15 23 42 / 0.08);
   --shadow-lg: 0 8px 24px -4px rgb(15 23 42 / 0.10);
@@ -513,7 +651,7 @@ Two layers. `:root` holds brand values; `@theme inline` gives them meaning. Comp
 @theme inline {
   --color-background: var(--jmac-canvas);
   --color-surface: var(--jmac-surface);
-  --color-surface-foreground: var(--jmac-navy);
+  --color-surface-foreground: var(--jmac-on-light);
   --color-border: var(--jmac-line);
   --color-input: var(--jmac-line);
 
@@ -523,22 +661,25 @@ Two layers. `:root` holds brand values; `@theme inline` gives them meaning. Comp
      this one line to make hover a navy tint instead. */
   --color-primary: var(--jmac-navy);
   --color-primary-hover: var(--jmac-blue);
-  --color-primary-foreground: var(--jmac-surface);
+  --color-primary-foreground: var(--jmac-on-dark);
 
   --color-accent: var(--jmac-sky);
-  --color-accent-foreground: var(--jmac-navy);
+  --color-accent-foreground: var(--jmac-on-light);
 
   --color-heading: var(--jmac-navy);
   --color-body: var(--jmac-body);
-  --color-muted: var(--jmac-canvas);
+  /* Deliberately NOT --jmac-canvas: muted surfaces (Skeleton, EmptyState,
+     inactive Tabs, table zebra striping) must read as distinct from the page
+     behind them, and spec 5.1 forbids components reaching for a hex literal. */
+  --color-muted: var(--jmac-mist);
   --color-muted-foreground: var(--jmac-body);
 
   --color-success: var(--jmac-success);
   --color-warning: var(--jmac-warning);
   --color-error: var(--jmac-error);
-  --color-success-foreground: var(--jmac-surface);
-  --color-warning-foreground: var(--jmac-navy);
-  --color-error-foreground: var(--jmac-surface);
+  --color-success-foreground: var(--jmac-on-dark);
+  --color-warning-foreground: var(--jmac-on-light);
+  --color-error-foreground: var(--jmac-on-dark);
 
   --color-ring: var(--jmac-blue);
 
@@ -638,7 +779,7 @@ Therefore, for every remaining task:
 - **No DDL.** No `create`, `alter`, or `drop` against `jmac-suite`.
 - **No DML.** No `insert`, `update`, `delete`, or `truncate`. Tests are read-only.
 - **No `supabase/` directory in this repository**, and no `supabase db reset`, `db push`, or `db start` targeting this stack.
-- A row-count baseline for all 62 base tables is recorded at `.superpowers/sdd/2026-08-07-jmac-phase1-track1-foundation/db-baseline.txt`. Track 1 ends by re-taking it and diffing; any change is a failure.
+- A row-count baseline for all 62 base tables is recorded at `docs/db-baseline.txt`. Track 1 ends by re-taking it and diffing; any change is a failure.
 
 ---
 
@@ -652,17 +793,17 @@ Therefore, for every remaining task:
 - Consumes: Task 1's `src/vite-env.d.ts`, which already declares `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY`
 - Produces: a populated `.env` that Tasks 5 and 6 read; an `npm run db:types` script that generates types from the live schema
 
-- [ ] **Step 1: Replace the database scripts in `package.json`**
+- [ ] **Step 1: Confirm the database scripts in `package.json`**
 
-The original scripts managed a stack this repository does not own. `db:reset` in particular would drop 70 tables of live data. Delete `db:start`, `db:stop`, and `db:reset` outright, and repoint `db:types` at the database URL rather than `--local` (which requires a `supabase/config.toml` that must not exist here).
+This step originally deleted `db:start`, `db:stop` and `db:reset`, which the first revision of Task 1 wrote. Task 1 no longer writes them — leaving them on disk for three tasks was the exact transient window this design exists to eliminate, since `supabase db reset` would drop 70 tables of live data that no migration set on this host can rebuild.
 
-Replace the four `db:*` entries with exactly this one:
+So this step is now a check rather than an edit. Confirm `package.json` carries exactly one `db:*` entry, pointed at the database URL rather than `--local` (which would require a `supabase/config.toml` that must not exist here):
 
 ```json
 "db:types": "supabase gen types typescript --db-url postgresql://postgres:postgres@127.0.0.1:56322/postgres > src/types/database.types.ts"
 ```
 
-Leave every other script unchanged.
+If any stack-mutating script is present, delete it. `src/lib/no-managed-stack.test.ts` asserts this in `npm test`, so a regression fails the suite rather than waiting for review. Leave every other script unchanged.
 
 - [ ] **Step 2: Write `.env.example`**
 
@@ -820,97 +961,8 @@ Follows HRMS `src/lib/supabase.ts`, with the error message naming each variable 
 
 ```ts
 import { createClient } from '@supabase/supabase-js'
-import type { Database } from '@/types/database.types'
-
-const url = import.meta.env.VITE_SUPABASE_URL
-const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
-
-if (!url) {
-  throw new Error(
-    'VITE_SUPABASE_URL is not set. Copy .env.example to .env — see README.md.'
-  )
-}
-
-if (!anonKey) {
-  throw new Error(
-    'VITE_SUPABASE_ANON_KEY is not set. Copy .env.example to .env — see README.md.'
-  )
-}
-
-export const supabase = createClient<Database>(url, anonKey, {
-  auth: {
-    persistSession: true,
-    autoRefreshToken: true,
-    detectSessionInUrl: true,
-  },
-})
-
-export type { Database }
-export type Tables<T extends keyof Database['public']['Tables']> =
-  Database['public']['Tables'][T]['Row']
-```
-
-- [ ] **Step 5: Run the test to verify it passes**
-
-Run: `npm test -- src/lib/supabase.test.ts`
-Expected: PASS, 3 tests.
-
-- [ ] **Step 6: Commit**
-
-```bash
-git add src/lib/supabase.ts src/lib/supabase.test.ts src/types/database.types.ts
-git commit -m "feat: add typed Supabase client and generated database types"
-```
-
----
-
-## Task 6: Read-only database contract tests
-
-**Files:**
-- Create: `vitest.db.config.ts`, `tests/db/contracts.test.ts`
-- Modify: `package.json` (add `test:db` script if absent)
-
-**Interfaces:**
-- Consumes: Tasks 4 and 5
-- Produces: `npm run test:db` — the gate proving the database contracts Tracks 3 and 4 depend on actually hold
-
-These tests assert what the application relies on. They **never write**. There is no seeding, no fixture setup, and no teardown — the database's existing state is the fixture.
-
-- [ ] **Step 1: Write `vitest.db.config.ts`**
-
-`loadEnv` is required: a node-environment Vitest run does not read `.env`, so without it the suite fails on a missing anon key even when `.env` is correct.
-
-```ts
-import { loadEnv } from 'vite'
-import { defineConfig } from 'vitest/config'
-
-const env = loadEnv('development', process.cwd(), 'VITE_')
-
-export default defineConfig({
-  test: {
-    environment: 'node',
-    include: ['tests/db/**/*.test.ts'],
-    testTimeout: 20_000,
-    env,
-  },
-})
-```
-
-Confirm `package.json` carries this script; add it if missing:
-
-```json
-"test:db": "vitest run --config vitest.db.config.ts"
-```
-
-- [ ] **Step 2: Write the test**
-
-Each assertion below was verified true against the live stack before this plan was written, so a failure means the database changed — which is exactly what the suite is for.
-
-`tests/db/contracts.test.ts`:
-
-```ts
-import { createClient } from '@supabase/supabase-js'
 import { beforeAll, describe, expect, it } from 'vitest'
+import type { Database } from '@/types/database.types'
 
 const URL = process.env.VITE_SUPABASE_URL ?? 'http://127.0.0.1:56321'
 const ANON = process.env.VITE_SUPABASE_ANON_KEY
@@ -923,16 +975,37 @@ beforeAll(() => {
   }
 })
 
-const anon = () => createClient(URL, ANON as string)
+// Typed with <Database> so table names, column names, embedded relations and
+// RPC names below are checked by `tsc -b` rather than being opaque strings.
+// Untyped, a renamed column would break the app's client at compile time while
+// this suite -- the thing meant to warn first -- kept passing.
+const anon = () => createClient<Database>(URL, ANON as string)
 
 describe('public careers contract', () => {
+  // job_postings is empty in this environment (db-baseline.txt records
+  // job_postings=0), and Postgres RLS denies silently: a missing or
+  // misconfigured policy still returns `{ data: [], error: null }` rather
+  // than an error. With no rows reaching a row-level check, this block can
+  // only prove that anon holds the base SELECT grant, that the queried
+  // schema (columns, embedded relations) is exposed as expected, and that
+  // the departments/positions foreign keys resolve. It does NOT prove the
+  // anon_view_open_postings policy itself is doing anything — that needs
+  // real open and non-open rows to tell a leak from a lockdown.
   it('lets an anonymous visitor query job_postings', async () => {
     const { error } = await anon().from('job_postings').select('id, status')
     expect(error).toBeNull()
   })
 
   it('exposes only open postings to an anonymous visitor', async () => {
-    const { data } = await anon().from('job_postings').select('status')
+    const { data, error } = await anon().from('job_postings').select('status')
+    expect(error).toBeNull()
+    expect(Array.isArray(data)).toBe(true)
+    // job_postings has 0 rows today, so .every() over an empty array is
+    // vacuously true — this cannot yet catch an RLS regression (e.g.
+    // anon_view_open_postings dropped, or replaced with `using (true)`,
+    // exposing draft/closed postings publicly). The error/Array.isArray
+    // checks above are what this test can actually fail on right now; the
+    // .every() below only gains real power once open listings exist.
     expect((data ?? []).every((row) => row.status === 'open')).toBe(true)
   })
 
@@ -952,18 +1025,51 @@ describe('public careers contract', () => {
     expect(departments.error).toBeNull()
     expect(positions.error).toBeNull()
     expect(departments.data?.length).toBeGreaterThan(0)
+    expect(positions.data?.length).toBeGreaterThan(0)
   })
 })
 
 describe('identity contract', () => {
+  // These two are the most security-relevant assertions in the suite, so they
+  // must be able to fail for the right reason. They previously read
+  // `error !== null || rows.length === 0`, which cannot: this stack answers
+  // GET /rest/v1/users with `[]` and HTTP 200 whether the anon key is correct,
+  // garbage, or absent entirely, so a completely misconfigured client was
+  // observationally identical to correctly-enforced RLS -- and the `||` meant
+  // any failure at all, including a dead network, satisfied the expectation.
+  //
+  // The control read below is the fix. It runs on the SAME client and hits
+  // departments, which is world-readable and non-empty, so the client must
+  // demonstrably work before the empty result from users is allowed to count
+  // as evidence of anything.
+
   it('exposes no user rows to an anonymous visitor', async () => {
-    const { data, error } = await anon().from('users').select('id, email')
-    expect(error !== null || (data ?? []).length === 0).toBe(true)
+    const client = anon()
+
+    const control = await client.from('departments').select('id').limit(1)
+    expect(control.error).toBeNull()
+    expect(control.data?.length).toBeGreaterThan(0)
+
+    const { data, error } = await client.from('users').select('id, email')
+    expect(error).toBeNull()
+    expect(data).not.toBeNull()
+    // Reading a selected column keeps the select string type-checked:
+    // supabase-js resolves an unknown column to a SelectQueryError row type,
+    // which only fails compilation at a use site like this one.
+    expect((data ?? []).map((row) => row.email)).toEqual([])
   })
 
   it('exposes no profile rows to an anonymous visitor', async () => {
-    const { data, error } = await anon().from('profiles').select('id, email')
-    expect(error !== null || (data ?? []).length === 0).toBe(true)
+    const client = anon()
+
+    const control = await client.from('departments').select('id').limit(1)
+    expect(control.error).toBeNull()
+    expect(control.data?.length).toBeGreaterThan(0)
+
+    const { data, error } = await client.from('profiles').select('id, email')
+    expect(error).toBeNull()
+    expect(data).not.toBeNull()
+    expect((data ?? []).map((row) => row.email)).toEqual([])
   })
 })
 
@@ -1000,7 +1106,7 @@ Expected: all four succeed.
 
 ```bash
 docker exec supabase_db_jmac-suite psql -U postgres -d postgres -tAc "select table_name||'='||(xpath('/row/c/text()', query_to_xml(format('select count(*) as c from public.%I', table_name), false, true, '')))[1]::text::int from information_schema.tables where table_schema='public' and table_type='BASE TABLE' order by table_name;" > /tmp/db-after.txt
-diff .superpowers/sdd/2026-08-07-jmac-phase1-track1-foundation/db-baseline.txt /tmp/db-after.txt && echo UNCHANGED
+diff docs/db-baseline.txt /tmp/db-after.txt && echo UNCHANGED
 ```
 
 Expected: `UNCHANGED`. Any diff is a task failure — report it rather than explaining it away.
