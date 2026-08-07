@@ -2,9 +2,11 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Stand up the JMAC application shell, design tokens, and a new unified Supabase database with identity, org, and public job-posting schema — the foundation every later track builds on.
+**Goal:** Stand up the JMAC application shell and design tokens, and connect them to the existing `jmac-suite` database — the foundation every later track builds on.
 
-**Architecture:** A Vite + React 19 app at the repository root with `integration/` excluded from compilation and file watching. Design tokens live in two CSS layers — raw brand values in `:root`, semantic aliases in Tailwind v4's `@theme inline` — so no component ever holds a hex literal. A new local Supabase stack on port 56321 carries three migrations plus a seed, with Row Level Security as the real access boundary.
+**Architecture:** A Vite + React 19 app at the repository root with `integration/` excluded from compilation and file watching. Design tokens live in two CSS layers — raw brand values in `:root`, semantic aliases in Tailwind v4's `@theme inline` — so no component ever holds a hex literal. The database is the already-running `jmac-suite` stack on port 56321: this repository connects to it, generates types from it, and asserts its contracts, but never manages or writes to it.
+
+> **Revised mid-execution, 2026-08-07.** Tasks 1–3 shipped as written. Tasks 4–9 originally created a new Supabase project with three migrations and a seed; that work was voided when execution found `jmac-suite` already running with the unified 70-table schema. See "Tasks 4–9 superseded" below and spec §1.1.
 
 **Tech Stack:** React 19.2 · TypeScript 6 · Vite 8 · Tailwind CSS v4 (`@tailwindcss/vite`) · Vitest 3 + Testing Library · Supabase CLI 2.109 · PostgreSQL 17 · oxlint
 
@@ -14,12 +16,10 @@
 
 - **Never modify anything under `integration/`.** It is reference-only. Read freely; write never.
 - **No hex colour literals in components.** Every colour reads a semantic token defined in `src/styles/tokens.css`.
-- Ports 54321 (POS) and 55321 (HRMS) are occupied. JMAC uses the **563xx** band exclusively.
 - Palette values, copied verbatim from the spec: primary `#0F172A`, primary-hover `#1D4ED8`, accent `#38BDF8`, background `#F8FAFC`, surface `#FFFFFF`, border `#E2E8F0`, heading `#0F172A`, body `#64748B`, success `#22C55E`, warning `#F59E0B`, error `#EF4444`.
-- `user_role` enum has exactly six values, in this order: `admin`, `hr_manager`, `hr_staff`, `pos_manager`, `cashier`, `employee`.
-- `profiles.status` defaults to `inactive`. A new account cannot act until an administrator activates it.
 - TypeScript runs with `"strict": true`. HRMS omits it; JMAC does not.
-- Every RLS helper function is `security definer`, `stable`, and sets `search_path = public`.
+- **The `jmac-suite` database is read-only to this repository.** No DDL, no DML, no `supabase/` directory, no `db reset`. It holds live data and no migration set on this host can rebuild it. See "Constraint that governs all remaining tasks".
+- The JMAC stack answers on `http://127.0.0.1:56321` (API) and `127.0.0.1:56322` (Postgres). Ports 54321 (POS) and 55321 (HRMS) belong to other stacks; leave them alone.
 - Commit after every task. Never use `--no-verify`.
 
 ---
@@ -39,14 +39,14 @@
 | `src/styles/index.css` | Tailwind import, font imports, base layer |
 | `src/lib/utils.ts` | `cn()` class merger |
 | `src/lib/supabase.ts` | Typed Supabase client |
-| `src/types/database.types.ts` | Generated from the live schema — never hand-edited |
-| `supabase/config.toml` | Local stack on the 563xx port band |
-| `supabase/migrations/0001_identity.sql` | Enums, `profiles`, signup trigger, RLS helpers, role-escalation guard |
-| `supabase/migrations/0002_org.sql` | `departments`, `positions`, `branches` |
-| `supabase/migrations/0003_recruitment_public.sql` | `job_postings` + anon-read policy scoped to open postings |
-| `supabase/seed.sql` | Six role accounts, org rows, two open postings |
+| `src/types/database.types.ts` | Generated from the live `jmac-suite` schema — never hand-edited |
+| `.env.example` | Connection template for the `jmac-suite` stack |
+| `README.md` | Getting started, and why this repo must not manage the database |
+| `vitest.db.config.ts` | Node environment for the DB suite, with `.env` loaded via `loadEnv` |
 | `tests/setup.ts` | Testing Library matchers |
-| `tests/db/rls.test.ts` | Integration tests asserting RLS behaviour against the running stack |
+| `tests/db/contracts.test.ts` | Read-only assertions of the database contracts Tracks 3 and 4 depend on |
+
+There is deliberately **no `supabase/` directory**. See "Constraint that governs all remaining tasks".
 
 ---
 
@@ -623,681 +623,156 @@ git commit -m "feat: add JMAC design tokens and base stylesheet"
 
 ---
 
-## Task 4: Initialize the Supabase project
+## Tasks 4–9 superseded
+
+**Revised 2026-08-07 during execution.** Tasks 4–9 as originally written created a new Supabase project and authored three migrations plus a seed. That work is void: the unified database already exists as the running `jmac-suite` stack (spec §1.1). Phase 1 now connects to it and authors no schema.
+
+The replacements are Tasks 4, 5, and 6 below. Tasks 7, 8, and 9 are withdrawn.
+
+### Constraint that governs all remaining tasks
+
+`jmac-suite` holds live data and **no repository on this host owns its migrations** — its schema exists only in the Postgres volume. It cannot be rebuilt if dropped.
+
+Therefore, for every remaining task:
+
+- **No DDL.** No `create`, `alter`, or `drop` against `jmac-suite`.
+- **No DML.** No `insert`, `update`, `delete`, or `truncate`. Tests are read-only.
+- **No `supabase/` directory in this repository**, and no `supabase db reset`, `db push`, or `db start` targeting this stack.
+- A row-count baseline for all 62 base tables is recorded at `.superpowers/sdd/2026-08-07-jmac-phase1-track1-foundation/db-baseline.txt`. Track 1 ends by re-taking it and diffing; any change is a failure.
+
+---
+
+## Task 4: Connect to the jmac-suite database
 
 **Files:**
-- Create: `supabase/config.toml`, `supabase/.gitignore`
+- Create: `.env` (git-ignored, not committed), `README.md`
+- Modify: `.env.example`, `package.json` (scripts only)
 
 **Interfaces:**
-- Consumes: nothing
-- Produces: a local stack — API `http://127.0.0.1:56321`, database port 56322, Studio 56323, Inbucket 56324
+- Consumes: Task 1's `src/vite-env.d.ts`, which already declares `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY`
+- Produces: a populated `.env` that Tasks 5 and 6 read; an `npm run db:types` script that generates types from the live schema
 
-- [ ] **Step 1: Initialize**
+- [ ] **Step 1: Replace the database scripts in `package.json`**
 
-Run: `npx supabase init --force`
-This writes a default `supabase/config.toml` on the 54321 band, which the next step replaces.
+The original scripts managed a stack this repository does not own. `db:reset` in particular would drop 70 tables of live data. Delete `db:start`, `db:stop`, and `db:reset` outright, and repoint `db:types` at the database URL rather than `--local` (which requires a `supabase/config.toml` that must not exist here).
 
-- [ ] **Step 2: Set the project id and port band**
+Replace the four `db:*` entries with exactly this one:
 
-Edit `supabase/config.toml`. Change exactly these values, leaving every other line as generated:
-
-| Key | Section | Value |
-|---|---|---|
-| `project_id` | top level | `"jmac"` |
-| `port` | `[api]` | `56321` |
-| `port` | `[db]` | `56322` |
-| `shadow_port` | `[db]` | `56320` |
-| `major_version` | `[db]` | `17` |
-| `port` | `[db.pooler]` | `56329` |
-| `port` | `[studio]` | `56323` |
-| `port` | `[local_smtp]` | `56324` |
-| `port` | `[analytics]` | `56327` |
-| `site_url` | `[auth]` | `"http://localhost:5173"` |
-| `additional_redirect_urls` | `[auth]` | `["http://localhost:5173"]` |
-
-Add this comment above `[api].port` so the choice is not mistaken for arbitrary:
-
-```toml
-# Ports 54321 (POS / sariswift-offline) and 55321 (HRMS / harmony-suite) are
-# already claimed on this host. JMAC takes the 563xx band so all three local
-# stacks can run at once.
+```json
+"db:types": "supabase gen types typescript --db-url postgresql://postgres:postgres@127.0.0.1:56322/postgres > src/types/database.types.ts"
 ```
 
-- [ ] **Step 3: Start the stack and verify the ports**
+Leave every other script unchanged.
 
-Run: `npx supabase start`
-Expected: startup completes and prints `API URL: http://127.0.0.1:56321`, `DB URL: postgresql://postgres:postgres@127.0.0.1:56322/postgres`, `Studio URL: http://127.0.0.1:56323`.
+- [ ] **Step 2: Write `.env.example`**
 
-If Docker reports a port conflict, another stack has claimed a 563xx port — resolve before continuing rather than shifting the band again.
-
-- [ ] **Step 4: Record the anon key**
-
-Run: `npx supabase status`
-Copy the `anon key` value into a new `.env` file at the repository root:
+Overwrite the file created in Task 1. The anon key is the standard Supabase local development key and is not a secret — committing it in the example is correct and saves the next developer a lookup.
 
 ```
+# JMAC connects to the local `jmac-suite` Supabase stack, which is managed
+# outside this repository. Start it from its own project directory; this repo
+# never runs `supabase start` or `supabase db reset` against it.
 VITE_SUPABASE_URL=http://127.0.0.1:56321
-VITE_SUPABASE_ANON_KEY=<anon key from supabase status>
+VITE_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJleHAiOjE5ODM4MTI5OTZ9.CRXP1A7WOeoJeXxjNni43kdQwgnWNReilDMblYTn_I0
 ```
 
-`.env` is git-ignored. `.env.example` from Task 1 stays committed as the template.
+- [ ] **Step 3: Create `.env`**
 
-- [ ] **Step 5: Commit**
+Copy `.env.example` to `.env`. Confirm `.env` is git-ignored and does **not** appear in `git status`.
+
+- [ ] **Step 4: Verify the connection**
+
+Run each of these and record the actual output. `$KEY` is the anon key from Step 2.
 
 ```bash
-git add supabase/config.toml supabase/.gitignore
-git commit -m "chore: initialize JMAC Supabase project on port 56321"
+KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJleHAiOjE5ODM4MTI5OTZ9.CRXP1A7WOeoJeXxjNni43kdQwgnWNReilDMblYTn_I0
+curl -s -o /dev/null -w "job_postings %{http_code}\n" "http://127.0.0.1:56321/rest/v1/job_postings?select=id&limit=1" -H "apikey: $KEY"
+curl -s -o /dev/null -w "departments %{http_code}\n" "http://127.0.0.1:56321/rest/v1/departments?select=id&limit=1" -H "apikey: $KEY"
+```
+
+Expected: `job_postings 200` and `departments 200`.
+
+- [ ] **Step 5: Write `README.md`**
+
+The connection story is non-obvious and dangerous to get wrong, so it is documented rather than left to tribal knowledge. Write this content (the outer fence below is not part of the file):
+
+~~~
+# JMAC Enterprise
+
+Enterprise business platform by JMAC Digital Enterprise.
+React 19 · TypeScript · Vite · Tailwind CSS v4 · Supabase.
+
+## Getting started
+
+```bash
+npm install
+cp .env.example .env
+npm run dev
+```
+
+## Database
+
+JMAC connects to a local Supabase stack named **`jmac-suite`** on port 56321.
+
+**This repository does not manage that stack.** It holds a 70-table unified
+schema — HRMS, POS, Finance, and the role/permission layer — and no migration
+set on this host can rebuild it. Treat it as infrastructure you connect to.
+
+Never run against it:
+
+- `supabase db reset` — drops every table, with nothing to replay
+- `supabase db push` or any migration command
+- Any `insert`, `update`, or `delete` from a test
+
+There is deliberately no `supabase/` directory in this repository. Integration
+tests under `tests/db/` are read-only by design.
+
+Regenerate types after a schema change made elsewhere:
+
+```bash
+npm run db:types
+```
+
+## Scripts
+
+| Script | Purpose |
+|---|---|
+| `npm run dev` | Vite dev server |
+| `npm run build` | Type-check and build |
+| `npm test` | Unit tests |
+| `npm run test:db` | Read-only integration tests against `jmac-suite` |
+| `npm run typecheck` | `tsc -b` |
+| `npm run lint` | oxlint |
+| `npm run db:types` | Regenerate `src/types/database.types.ts` |
+~~~
+
+- [ ] **Step 6: Commit**
+
+`.env` must NOT be staged.
+
+```bash
+git add package.json .env.example README.md
+git commit -m "chore: connect to the jmac-suite Supabase stack"
 ```
 
 ---
 
-## Task 5: Identity migration
+## Task 5: Generated types and the typed Supabase client
 
 **Files:**
-- Create: `supabase/migrations/0001_identity.sql`
+- Create: `src/types/database.types.ts` (generated — never hand-edited), `src/lib/supabase.ts`, `src/lib/supabase.test.ts`
 
 **Interfaces:**
-- Consumes: Task 4's stack
-- Produces: types `user_role`, `account_status`; table `public.profiles`; functions `public.current_user_role()`, `public.is_admin()`, `public.is_active()`, `public.has_role(user_role[])`
-
-- [ ] **Step 1: Write the migration**
-
-```sql
--- JMAC identity: one auth.users, one profiles table, six roles.
--- Adapted from HRMS 20260713200311_initial_schema.sql:54, with the role enum
--- widened for POS roles and `employee_id` deliberately omitted -- that column
--- arrives in Phase 3 alongside the `employees` table it references, so the
--- schema never carries a foreign key to nothing.
-
-create type user_role as enum (
-  'admin', 'hr_manager', 'hr_staff', 'pos_manager', 'cashier', 'employee'
-);
-create type account_status as enum ('active', 'inactive');
-
-create table public.profiles (
-  id            uuid primary key references auth.users(id) on delete cascade,
-  full_name     text not null,
-  email         text not null unique,
-  role          user_role not null default 'employee',
-  status        account_status not null default 'inactive',
-  avatar_url    text,
-  last_login_at timestamptz,
-  created_by    uuid references public.profiles(id),
-  created_at    timestamptz not null default now(),
-  updated_at    timestamptz not null default now()
-);
-
-create index idx_profiles_role on public.profiles(role);
-create index idx_profiles_status on public.profiles(status);
-
--- ---------------------------------------------------------------------------
--- RLS helpers. security definer so they can read profiles while the policies
--- that call them are still being evaluated; search_path pinned so a caller
--- cannot shadow `profiles` with their own table.
--- ---------------------------------------------------------------------------
-
--- Named current_user_role rather than current_role: `current_role` is a
--- reserved SQL keyword that PostgreSQL already answers with the session's
--- database role, so a function by that name is a collision waiting to happen.
-create or replace function public.current_user_role()
-returns user_role language sql stable security definer set search_path = public as $$
-  select role from public.profiles where id = auth.uid() and status = 'active';
-$$;
-
-create or replace function public.is_active()
-returns boolean language sql stable security definer set search_path = public as $$
-  select exists (
-    select 1 from public.profiles where id = auth.uid() and status = 'active'
-  );
-$$;
-
-create or replace function public.is_admin()
-returns boolean language sql stable security definer set search_path = public as $$
-  select exists (
-    select 1 from public.profiles
-    where id = auth.uid() and role = 'admin' and status = 'active'
-  );
-$$;
-
-create or replace function public.has_role(roles user_role[])
-returns boolean language sql stable security definer set search_path = public as $$
-  select exists (
-    select 1 from public.profiles
-    where id = auth.uid() and status = 'active' and role = any(roles)
-  );
-$$;
-
--- ---------------------------------------------------------------------------
--- Signup trigger. Every auth.users row gets a profiles row, defaulting to the
--- least privilege the system has: an inactive employee.
--- ---------------------------------------------------------------------------
-
-create or replace function public.handle_new_user()
-returns trigger language plpgsql security definer set search_path = public as $$
-begin
-  insert into public.profiles (id, full_name, email)
-  values (
-    new.id,
-    coalesce(new.raw_user_meta_data ->> 'full_name', split_part(new.email, '@', 1)),
-    new.email
-  );
-  return new;
-end;
-$$;
-
-create trigger on_auth_user_created
-  after insert on auth.users
-  for each row execute function public.handle_new_user();
-
--- ---------------------------------------------------------------------------
--- Privilege-escalation guard. Without this, a user with update rights on their
--- own row could simply set role = 'admin'.
--- ---------------------------------------------------------------------------
-
-create or replace function public.protect_role_changes()
-returns trigger language plpgsql security definer set search_path = public as $$
-begin
-  if (new.role is distinct from old.role or new.status is distinct from old.status)
-     and not public.is_admin() then
-    raise exception 'Only an administrator may change a role or account status';
-  end if;
-  return new;
-end;
-$$;
-
-create trigger trg_protect_role_changes
-  before update on public.profiles
-  for each row execute function public.protect_role_changes();
-
--- ---------------------------------------------------------------------------
--- RLS
--- ---------------------------------------------------------------------------
-
-alter table public.profiles enable row level security;
-
-create policy profiles_select_own on public.profiles
-  for select to authenticated using (id = auth.uid());
-
-create policy profiles_select_all_admin on public.profiles
-  for select to authenticated using (public.is_admin());
-
-create policy profiles_select_staff on public.profiles
-  for select to authenticated
-  using (public.has_role(array['hr_manager', 'hr_staff']::user_role[]));
-
-create policy profiles_update_own on public.profiles
-  for update to authenticated using (id = auth.uid()) with check (id = auth.uid());
-
-create policy profiles_update_admin on public.profiles
-  for update to authenticated using (public.is_admin()) with check (public.is_admin());
-
-revoke all on public.profiles from anon;
-grant select, update on public.profiles to authenticated;
-grant execute on function public.current_user_role(), public.is_active(),
-  public.is_admin(), public.has_role(user_role[]) to authenticated;
-```
-
-- [ ] **Step 2: Apply and verify**
-
-Run: `npx supabase db reset`
-Expected: applies cleanly, no errors.
-
-Then verify the trigger and the guard actually fire:
-
-```bash
-npx supabase db reset
-psql "postgresql://postgres:postgres@127.0.0.1:56322/postgres" -c "
-  select enumlabel from pg_enum
-  join pg_type on pg_type.oid = pg_enum.enumtypid
-  where typname = 'user_role' order by enumsortorder;"
-```
-
-Expected: exactly six rows, in the order `admin, hr_manager, hr_staff, pos_manager, cashier, employee`.
-
-- [ ] **Step 3: Commit**
-
-```bash
-git add supabase/migrations/0001_identity.sql
-git commit -m "feat(db): add identity schema with six roles and RLS helpers"
-```
-
----
-
-## Task 6: Organisation migration
-
-**Files:**
-- Create: `supabase/migrations/0002_org.sql`
-
-**Interfaces:**
-- Consumes: Task 5's `is_admin()`, `has_role()`
-- Produces: tables `public.departments`, `public.positions`, `public.branches`
-
-- [ ] **Step 1: Write the migration**
-
-```sql
--- Organisation reference data. Shapes follow HRMS initial_schema.sql:121 and
--- :129. `branches` is new to JMAC: HRMS treats a branch as a lookup value, and
--- POS's `stores` table maps onto it when the Sales module lands in Phase 4.
-
-create table public.departments (
-  id          uuid primary key default gen_random_uuid(),
-  name        text not null unique,
-  description text,
-  created_at  timestamptz not null default now(),
-  updated_at  timestamptz not null default now()
-);
-
-create table public.positions (
-  id            uuid primary key default gen_random_uuid(),
-  title         text not null,
-  department_id uuid not null references public.departments(id) on delete restrict,
-  description   text,
-  created_at    timestamptz not null default now(),
-  updated_at    timestamptz not null default now(),
-  unique (title, department_id)
-);
-
-create index idx_positions_department on public.positions(department_id);
-
-create table public.branches (
-  id         uuid primary key default gen_random_uuid(),
-  name       text not null unique,
-  code       text not null unique,
-  address    text,
-  city       text,
-  province   text,
-  is_active  boolean not null default true,
-  created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now()
-);
-
-alter table public.departments enable row level security;
-alter table public.positions   enable row level security;
-alter table public.branches    enable row level security;
-
--- Anonymous read is granted because job postings join these tables for their
--- department and position names on the public careers page.
-create policy departments_select_public on public.departments
-  for select to anon, authenticated using (true);
-create policy positions_select_public on public.positions
-  for select to anon, authenticated using (true);
-create policy branches_select_public on public.branches
-  for select to anon, authenticated using (is_active);
-
-create policy departments_write_admin on public.departments
-  for all to authenticated using (public.is_admin()) with check (public.is_admin());
-create policy positions_write_admin on public.positions
-  for all to authenticated using (public.is_admin()) with check (public.is_admin());
-create policy branches_write_admin on public.branches
-  for all to authenticated using (public.is_admin()) with check (public.is_admin());
-
-grant select on public.departments, public.positions, public.branches to anon, authenticated;
-grant insert, update, delete on public.departments, public.positions, public.branches to authenticated;
-```
-
-- [ ] **Step 2: Apply and verify**
-
-Run: `npx supabase db reset`
-Expected: applies cleanly.
-
-- [ ] **Step 3: Commit**
-
-```bash
-git add supabase/migrations/0002_org.sql
-git commit -m "feat(db): add departments, positions, and branches"
-```
-
----
-
-## Task 7: Public recruitment migration
-
-**Files:**
-- Create: `supabase/migrations/0003_recruitment_public.sql`
-
-**Interfaces:**
-- Consumes: Tasks 5 and 6
-- Produces: types `employment_type`, `job_posting_status`; table `public.job_postings`, readable by `anon` only where `status = 'open'`
-
-- [ ] **Step 1: Write the migration**
-
-```sql
--- Job postings, plus the anon-read policy that makes the public careers page
--- possible. Adapted from HRMS initial_schema.sql:153 and the public-access
--- policy in 20260715030348_recruitment_public_access.sql, with `branch_id`
--- added so a posting states where the job actually is.
---
--- `applicants`, `applications`, and submit_job_application() are Phase 3.
--- Phase 1 lists positions; it does not accept applications.
-
-create type employment_type    as enum ('full_time', 'part_time', 'contract', 'internship');
-create type job_posting_status as enum ('draft', 'open', 'closed');
-
-create table public.job_postings (
-  id              uuid primary key default gen_random_uuid(),
-  title           text not null,
-  department_id   uuid not null references public.departments(id) on delete restrict,
-  position_id     uuid not null references public.positions(id)   on delete restrict,
-  branch_id       uuid references public.branches(id) on delete set null,
-  description     text not null,
-  requirements    text,
-  employment_type employment_type not null default 'full_time',
-  vacancies       integer not null default 1 check (vacancies > 0),
-  status          job_posting_status not null default 'draft',
-  posted_by       uuid references public.profiles(id) on delete set null,
-  date_posted     timestamptz,
-  closing_date    date,
-  created_at      timestamptz not null default now(),
-  updated_at      timestamptz not null default now()
-);
-
-create index idx_job_postings_status     on public.job_postings(status);
-create index idx_job_postings_department on public.job_postings(department_id);
-
-alter table public.job_postings enable row level security;
-
--- Anonymous visitors see open postings and nothing else. The careers page
--- therefore never filters by status client-side -- anything it can read is
--- already open. A draft posting is invisible, not merely hidden.
-create policy job_postings_select_public on public.job_postings
-  for select to anon, authenticated using (status = 'open');
-
-create policy job_postings_select_staff on public.job_postings
-  for select to authenticated
-  using (public.is_admin() or public.has_role(array['hr_staff', 'hr_manager']::user_role[]));
-
--- Running the job board is HR Staff's process, matching canPostJobs() in
--- HRMS roles.ts. HR Manager screens applicants instead.
-create policy job_postings_write_staff on public.job_postings
-  for all to authenticated
-  using (public.is_admin() or public.has_role(array['hr_staff']::user_role[]))
-  with check (public.is_admin() or public.has_role(array['hr_staff']::user_role[]));
-
-grant select on public.job_postings to anon, authenticated;
-grant insert, update, delete on public.job_postings to authenticated;
-```
-
-- [ ] **Step 2: Apply and verify**
-
-Run: `npx supabase db reset`
-Expected: applies cleanly. RLS behaviour is asserted by the integration tests in Task 8 — this step only confirms the schema builds.
-
-- [ ] **Step 3: Commit**
-
-```bash
-git add supabase/migrations/0003_recruitment_public.sql
-git commit -m "feat(db): add job_postings with public open-only read policy"
-```
-
----
-
-## Task 8: Seed data and RLS integration tests
-
-**Files:**
-- Create: `supabase/seed.sql`, `vitest.db.config.ts`, `tests/db/rls.test.ts`
-
-**Interfaces:**
-- Consumes: Tasks 5–7
-- Produces: six seeded accounts (`admin@jmac.test`, `hrmanager@jmac.test`, `hrstaff@jmac.test`, `posmanager@jmac.test`, `cashier@jmac.test`, `employee@jmac.test`, all password `Jmac1234!`), two open job postings, one draft posting
-
-- [ ] **Step 1: Write the failing test**
-
-`vitest.db.config.ts`:
-
-`loadEnv` is required here. A plain node-environment Vitest run does not read
-`.env`, so without this the suite would fail on a missing anon key even when
-`.env` is correctly populated.
-
-```ts
-import { loadEnv } from 'vite'
-import { defineConfig } from 'vitest/config'
-
-const env = loadEnv('development', process.cwd(), 'VITE_')
-
-export default defineConfig({
-  test: {
-    environment: 'node',
-    include: ['tests/db/**/*.test.ts'],
-    testTimeout: 20_000,
-    env,
-  },
-})
-```
-
-`tests/db/rls.test.ts`:
-
-```ts
-import { createClient } from '@supabase/supabase-js'
-import { beforeAll, describe, expect, it } from 'vitest'
-
-const URL = process.env.VITE_SUPABASE_URL ?? 'http://127.0.0.1:56321'
-const ANON = process.env.VITE_SUPABASE_ANON_KEY
-
-beforeAll(() => {
-  if (!ANON) {
-    throw new Error(
-      'VITE_SUPABASE_ANON_KEY is unset. Run `npx supabase status`, copy the anon key into .env, then re-run with `npm run test:db`.'
-    )
-  }
-})
-
-function anonClient() {
-  return createClient(URL, ANON as string)
-}
-
-describe('job_postings RLS', () => {
-  it('lets an anonymous visitor read open postings', async () => {
-    const { data, error } = await anonClient().from('job_postings').select('id, title, status')
-    expect(error).toBeNull()
-    expect(data?.length).toBe(2)
-  })
-
-  it('never exposes a draft posting to an anonymous visitor', async () => {
-    const { data } = await anonClient().from('job_postings').select('status')
-    expect(data?.every((row) => row.status === 'open')).toBe(true)
-  })
-
-  it('joins department and position names for the careers page', async () => {
-    const { data, error } = await anonClient()
-      .from('job_postings')
-      .select('title, departments(name), positions(title)')
-      .order('date_posted', { ascending: false, nullsFirst: false })
-    expect(error).toBeNull()
-    expect(data?.[0]?.departments).not.toBeNull()
-    expect(data?.[0]?.positions).not.toBeNull()
-  })
-
-  // Valid foreign keys on purpose. Passing nulls would trip the NOT NULL
-  // constraint and the test would pass without RLS being involved at all.
-  it('refuses an anonymous write', async () => {
-    const { error } = await anonClient().from('job_postings').insert({
-      title: 'Injected',
-      description: 'Should never be written by an anonymous client.',
-      department_id: 'd0000000-0000-0000-0000-000000000002',
-      position_id: 'c0000000-0000-0000-0000-000000000004',
-      status: 'open',
-    } as never)
-    expect(error).not.toBeNull()
-    expect(error?.code).toBe('42501')
-  })
-})
-
-describe('profiles RLS', () => {
-  it('exposes nothing to an anonymous visitor', async () => {
-    const { data, error } = await anonClient().from('profiles').select('id')
-    expect(error !== null || data?.length === 0).toBe(true)
-  })
-
-  it('shows a signed-in cashier their own row and no one else’s', async () => {
-    const client = anonClient()
-    const { error: signInError } = await client.auth.signInWithPassword({
-      email: 'cashier@jmac.test', password: 'Jmac1234!',
-    })
-    expect(signInError).toBeNull()
-
-    const { data } = await client.from('profiles').select('email, role')
-    expect(data).toHaveLength(1)
-    expect(data?.[0]?.email).toBe('cashier@jmac.test')
-    expect(data?.[0]?.role).toBe('cashier')
-  })
-
-  it('blocks a cashier from promoting themselves to admin', async () => {
-    const client = anonClient()
-    await client.auth.signInWithPassword({
-      email: 'cashier@jmac.test', password: 'Jmac1234!',
-    })
-    const { data: user } = await client.auth.getUser()
-    const { error } = await client
-      .from('profiles')
-      .update({ role: 'admin' })
-      .eq('id', user.user?.id as string)
-    expect(error).not.toBeNull()
-  })
-
-  it('lets an admin read every profile', async () => {
-    const client = anonClient()
-    await client.auth.signInWithPassword({
-      email: 'admin@jmac.test', password: 'Jmac1234!',
-    })
-    const { data } = await client.from('profiles').select('id')
-    expect(data?.length).toBe(6)
-  })
-})
-```
-
-- [ ] **Step 2: Run the test to verify it fails**
-
-Run: `npm run test:db`
-Expected: FAIL — no seeded rows exist, so the first test finds 0 postings rather than 2.
-
-- [ ] **Step 3: Write `supabase/seed.sql`**
-
-The `disable trigger` around the role assignments is deliberate and mirrors HRMS's `seed.sql:35`. `trg_protect_role_changes` blocks any role change not made by an admin — and at seed time no admin exists yet, so bootstrapping the first accounts means stepping around the guard on purpose, then restoring it.
-
-```sql
--- Six accounts, one per role, all with password Jmac1234!
--- Local development only. The handle_new_user() trigger creates each profiles
--- row automatically; these updates then assign the real role and activate it.
-
-insert into auth.users (
-  instance_id, id, aud, role, email, encrypted_password,
-  email_confirmed_at, last_sign_in_at,
-  raw_app_meta_data, raw_user_meta_data,
-  created_at, updated_at,
-  confirmation_token, email_change, email_change_token_new, recovery_token
-) values
-  ('00000000-0000-0000-0000-000000000000', 'a0000000-0000-0000-0000-000000000001',
-   'authenticated', 'authenticated', 'admin@jmac.test', crypt('Jmac1234!', gen_salt('bf')),
-   now(), now(), '{"provider":"email","providers":["email"]}',
-   '{"full_name":"JMAC Administrator"}', now(), now(), '', '', '', ''),
-  ('00000000-0000-0000-0000-000000000000', 'a0000000-0000-0000-0000-000000000002',
-   'authenticated', 'authenticated', 'hrmanager@jmac.test', crypt('Jmac1234!', gen_salt('bf')),
-   now(), now(), '{"provider":"email","providers":["email"]}',
-   '{"full_name":"Maria Santos"}', now(), now(), '', '', '', ''),
-  ('00000000-0000-0000-0000-000000000000', 'a0000000-0000-0000-0000-000000000003',
-   'authenticated', 'authenticated', 'hrstaff@jmac.test', crypt('Jmac1234!', gen_salt('bf')),
-   now(), now(), '{"provider":"email","providers":["email"]}',
-   '{"full_name":"Jose Reyes"}', now(), now(), '', '', '', ''),
-  ('00000000-0000-0000-0000-000000000000', 'a0000000-0000-0000-0000-000000000004',
-   'authenticated', 'authenticated', 'posmanager@jmac.test', crypt('Jmac1234!', gen_salt('bf')),
-   now(), now(), '{"provider":"email","providers":["email"]}',
-   '{"full_name":"Ana Cruz"}', now(), now(), '', '', '', ''),
-  ('00000000-0000-0000-0000-000000000000', 'a0000000-0000-0000-0000-000000000005',
-   'authenticated', 'authenticated', 'cashier@jmac.test', crypt('Jmac1234!', gen_salt('bf')),
-   now(), now(), '{"provider":"email","providers":["email"]}',
-   '{"full_name":"Paolo Mendoza"}', now(), now(), '', '', '', ''),
-  ('00000000-0000-0000-0000-000000000000', 'a0000000-0000-0000-0000-000000000006',
-   'authenticated', 'authenticated', 'employee@jmac.test', crypt('Jmac1234!', gen_salt('bf')),
-   now(), now(), '{"provider":"email","providers":["email"]}',
-   '{"full_name":"Liza Bautista"}', now(), now(), '', '', '', '');
-
--- trg_protect_role_changes rejects any role or status change not made by an
--- admin. No admin exists yet, so the bootstrap steps around the guard on
--- purpose and restores it immediately after.
-alter table public.profiles disable trigger trg_protect_role_changes;
-
-update public.profiles set role = 'admin',       status = 'active' where email = 'admin@jmac.test';
-update public.profiles set role = 'hr_manager',  status = 'active' where email = 'hrmanager@jmac.test';
-update public.profiles set role = 'hr_staff',    status = 'active' where email = 'hrstaff@jmac.test';
-update public.profiles set role = 'pos_manager', status = 'active' where email = 'posmanager@jmac.test';
-update public.profiles set role = 'cashier',     status = 'active' where email = 'cashier@jmac.test';
-update public.profiles set role = 'employee',    status = 'active' where email = 'employee@jmac.test';
-
-alter table public.profiles enable trigger trg_protect_role_changes;
-
--- ---------------------------------------------------------------------------
--- Organisation
--- ---------------------------------------------------------------------------
-
-insert into public.departments (id, name, description) values
-  ('d0000000-0000-0000-0000-000000000001', 'Human Resources', 'People operations and recruitment'),
-  ('d0000000-0000-0000-0000-000000000002', 'Retail Operations', 'Store and point-of-sale operations'),
-  ('d0000000-0000-0000-0000-000000000003', 'Finance', 'Placeholder — Finance module is not implemented');
-
-insert into public.positions (id, title, department_id, description) values
-  ('c0000000-0000-0000-0000-000000000001', 'HR Manager',    'd0000000-0000-0000-0000-000000000001', 'Leads people operations'),
-  ('c0000000-0000-0000-0000-000000000002', 'HR Staff',      'd0000000-0000-0000-0000-000000000001', 'Runs recruitment and payroll preparation'),
-  ('c0000000-0000-0000-0000-000000000003', 'Store Manager', 'd0000000-0000-0000-0000-000000000002', 'Manages a branch and its staff'),
-  ('c0000000-0000-0000-0000-000000000004', 'Cashier',       'd0000000-0000-0000-0000-000000000002', 'Handles point-of-sale transactions');
-
-insert into public.branches (id, name, code, city, province) values
-  ('b0000000-0000-0000-0000-000000000001', 'JMAC Main Branch', 'MAIN', 'Quezon City', 'Metro Manila');
-
--- ---------------------------------------------------------------------------
--- Job postings: two open (the positions the brief names) and one draft, which
--- exists so the RLS tests can prove drafts stay invisible.
--- ---------------------------------------------------------------------------
-
-insert into public.job_postings (
-  title, department_id, position_id, branch_id, description, requirements,
-  employment_type, vacancies, status, posted_by, date_posted, closing_date
-) values
-  ('Cashier',
-   'd0000000-0000-0000-0000-000000000002', 'c0000000-0000-0000-0000-000000000004',
-   'b0000000-0000-0000-0000-000000000001',
-   'Process customer transactions accurately and provide courteous service at the point of sale.',
-   'Senior high school graduate. Prior retail experience is an advantage. Comfortable handling cash and card payments.',
-   'full_time', 3, 'open', 'a0000000-0000-0000-0000-000000000003', now() - interval '3 days', current_date + interval '30 days'),
-  ('Manager',
-   'd0000000-0000-0000-0000-000000000002', 'c0000000-0000-0000-0000-000000000003',
-   'b0000000-0000-0000-0000-000000000001',
-   'Lead branch operations, supervise cashiers, and own daily sales and inventory performance.',
-   'Bachelor''s degree. At least two years of retail supervisory experience.',
-   'full_time', 1, 'open', 'a0000000-0000-0000-0000-000000000003', now() - interval '1 day', current_date + interval '45 days'),
-  ('HR Staff',
-   'd0000000-0000-0000-0000-000000000001', 'c0000000-0000-0000-0000-000000000002',
-   'b0000000-0000-0000-0000-000000000001',
-   'Draft posting — must never be visible to anonymous visitors.',
-   'Not yet published.',
-   'full_time', 1, 'draft', 'a0000000-0000-0000-0000-000000000003', null, null);
-```
-
-- [ ] **Step 4: Run the tests to verify they pass**
-
-Run: `npx supabase db reset && npm run test:db`
-Expected: PASS, 8 tests. If `VITE_SUPABASE_ANON_KEY` is unset the suite fails with the explanatory message from `beforeAll` — populate `.env` as Task 4 Step 4 describes.
-
-- [ ] **Step 5: Commit**
-
-```bash
-git add supabase/seed.sql vitest.db.config.ts tests/db/rls.test.ts
-git commit -m "test(db): seed six role accounts and assert RLS boundaries"
-```
-
----
-
-## Task 9: Typed Supabase client
-
-**Files:**
-- Create: `src/lib/supabase.ts`, `src/types/database.types.ts` (generated), `src/lib/supabase.test.ts`
-
-**Interfaces:**
-- Consumes: Tasks 5–8
+- Consumes: Task 4's `.env` and `db:types` script
 - Produces: `supabase` — a `SupabaseClient<Database>` used by every service and hook in Tracks 3 and 4. Exports type `Database` and helper `Tables<'job_postings'>`.
 
 - [ ] **Step 1: Generate the database types**
 
 Run: `npm run db:types`
-Expected: writes `src/types/database.types.ts` containing `profiles`, `departments`, `positions`, `branches`, and `job_postings`. This file is generated — never hand-edit it. Re-run after every migration.
+
+Expected: `src/types/database.types.ts` is written and contains `users`, `profiles`, `roles`, `permissions`, `user_roles`, `modules`, `departments`, `positions`, `branches`, and `job_postings` among many others. The file is large — the schema has 70 tables. Do not hand-edit it, and do not trim it.
+
+Confirm it compiles: `npx tsc -b`.
 
 - [ ] **Step 2: Write the failing test**
 
@@ -1341,7 +816,7 @@ Expected: FAIL — `Failed to resolve import "@/lib/supabase"`.
 
 - [ ] **Step 4: Write `src/lib/supabase.ts`**
 
-Follows HRMS `src/lib/supabase.ts`, with the error message naming both variables so a misconfigured environment says which one is wrong.
+Follows HRMS `src/lib/supabase.ts`, with the error message naming each variable individually so a misconfigured environment says which one is wrong.
 
 ```ts
 import { createClient } from '@supabase/supabase-js'
@@ -1352,13 +827,13 @@ const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
 
 if (!url) {
   throw new Error(
-    'VITE_SUPABASE_URL is not set. Copy .env.example to .env and fill it from `npx supabase status`.'
+    'VITE_SUPABASE_URL is not set. Copy .env.example to .env — see README.md.'
   )
 }
 
 if (!anonKey) {
   throw new Error(
-    'VITE_SUPABASE_ANON_KEY is not set. Copy .env.example to .env and fill it from `npx supabase status`.'
+    'VITE_SUPABASE_ANON_KEY is not set. Copy .env.example to .env — see README.md.'
   )
 }
 
@@ -1375,10 +850,10 @@ export type Tables<T extends keyof Database['public']['Tables']> =
   Database['public']['Tables'][T]['Row']
 ```
 
-- [ ] **Step 5: Run the full verification suite**
+- [ ] **Step 5: Run the test to verify it passes**
 
-Run: `npm test && npm run typecheck && npm run build && npm run lint`
-Expected: all four succeed. This is the Track 1 gate.
+Run: `npm test -- src/lib/supabase.test.ts`
+Expected: PASS, 3 tests.
 
 - [ ] **Step 6: Commit**
 
@@ -1389,6 +864,166 @@ git commit -m "feat: add typed Supabase client and generated database types"
 
 ---
 
+## Task 6: Read-only database contract tests
+
+**Files:**
+- Create: `vitest.db.config.ts`, `tests/db/contracts.test.ts`
+- Modify: `package.json` (add `test:db` script if absent)
+
+**Interfaces:**
+- Consumes: Tasks 4 and 5
+- Produces: `npm run test:db` — the gate proving the database contracts Tracks 3 and 4 depend on actually hold
+
+These tests assert what the application relies on. They **never write**. There is no seeding, no fixture setup, and no teardown — the database's existing state is the fixture.
+
+- [ ] **Step 1: Write `vitest.db.config.ts`**
+
+`loadEnv` is required: a node-environment Vitest run does not read `.env`, so without it the suite fails on a missing anon key even when `.env` is correct.
+
+```ts
+import { loadEnv } from 'vite'
+import { defineConfig } from 'vitest/config'
+
+const env = loadEnv('development', process.cwd(), 'VITE_')
+
+export default defineConfig({
+  test: {
+    environment: 'node',
+    include: ['tests/db/**/*.test.ts'],
+    testTimeout: 20_000,
+    env,
+  },
+})
+```
+
+Confirm `package.json` carries this script; add it if missing:
+
+```json
+"test:db": "vitest run --config vitest.db.config.ts"
+```
+
+- [ ] **Step 2: Write the test**
+
+Each assertion below was verified true against the live stack before this plan was written, so a failure means the database changed — which is exactly what the suite is for.
+
+`tests/db/contracts.test.ts`:
+
+```ts
+import { createClient } from '@supabase/supabase-js'
+import { beforeAll, describe, expect, it } from 'vitest'
+
+const URL = process.env.VITE_SUPABASE_URL ?? 'http://127.0.0.1:56321'
+const ANON = process.env.VITE_SUPABASE_ANON_KEY
+
+beforeAll(() => {
+  if (!ANON) {
+    throw new Error(
+      'VITE_SUPABASE_ANON_KEY is unset. Copy .env.example to .env, then re-run `npm run test:db`.'
+    )
+  }
+})
+
+const anon = () => createClient(URL, ANON as string)
+
+describe('public careers contract', () => {
+  it('lets an anonymous visitor query job_postings', async () => {
+    const { error } = await anon().from('job_postings').select('id, status')
+    expect(error).toBeNull()
+  })
+
+  it('exposes only open postings to an anonymous visitor', async () => {
+    const { data } = await anon().from('job_postings').select('status')
+    expect((data ?? []).every((row) => row.status === 'open')).toBe(true)
+  })
+
+  it('joins department and position names anonymously', async () => {
+    const { error } = await anon()
+      .from('job_postings')
+      .select('id, departments(name), positions(title)')
+      .order('date_posted', { ascending: false, nullsFirst: false })
+    expect(error).toBeNull()
+  })
+
+  it('reads departments and positions anonymously', async () => {
+    const [departments, positions] = await Promise.all([
+      anon().from('departments').select('id, name').limit(1),
+      anon().from('positions').select('id, title').limit(1),
+    ])
+    expect(departments.error).toBeNull()
+    expect(positions.error).toBeNull()
+    expect(departments.data?.length).toBeGreaterThan(0)
+  })
+})
+
+describe('identity contract', () => {
+  it('exposes no user rows to an anonymous visitor', async () => {
+    const { data, error } = await anon().from('users').select('id, email')
+    expect(error !== null || (data ?? []).length === 0).toBe(true)
+  })
+
+  it('exposes no profile rows to an anonymous visitor', async () => {
+    const { data, error } = await anon().from('profiles').select('id, email')
+    expect(error !== null || (data ?? []).length === 0).toBe(true)
+  })
+})
+
+describe('authorization contract', () => {
+  // Anonymous callers legitimately resolve to no roles and no permissions.
+  // The contract under test is that the helpers exist and are callable —
+  // Track 3's AuthProvider calls them on every sign-in. 42883 is
+  // undefined_function: that would mean the helper is gone.
+  it('exposes my_roles as a callable RPC', async () => {
+    const { error } = await anon().rpc('my_roles')
+    expect(error?.code).not.toBe('42883')
+  })
+
+  it('exposes my_permissions as a callable RPC', async () => {
+    const { error } = await anon().rpc('my_permissions')
+    expect(error?.code).not.toBe('42883')
+  })
+})
+```
+
+- [ ] **Step 3: Run the suite**
+
+Run: `npm run test:db`
+Expected: PASS, 8 tests.
+
+If a test fails, **do not change the database to make it pass.** Report the failure — it means the schema differs from what the plan recorded, and that is information the controller needs.
+
+- [ ] **Step 4: Run the full verification suite**
+
+Run: `npm test && npm run typecheck && npm run build && npm run lint`
+Expected: all four succeed.
+
+- [ ] **Step 5: Verify no database rows changed**
+
+```bash
+docker exec supabase_db_jmac-suite psql -U postgres -d postgres -tAc "select table_name||'='||(xpath('/row/c/text()', query_to_xml(format('select count(*) as c from public.%I', table_name), false, true, '')))[1]::text::int from information_schema.tables where table_schema='public' and table_type='BASE TABLE' order by table_name;" > /tmp/db-after.txt
+diff .superpowers/sdd/2026-08-07-jmac-phase1-track1-foundation/db-baseline.txt /tmp/db-after.txt && echo UNCHANGED
+```
+
+Expected: `UNCHANGED`. Any diff is a task failure — report it rather than explaining it away.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add vitest.db.config.ts tests/db/contracts.test.ts package.json
+git commit -m "test: add read-only contract tests against jmac-suite"
+```
+
+---
+
+## Tasks 7, 8, 9 — withdrawn
+
+Superseded by the adoption decision. Their content authored schema that already exists:
+
+- **Task 7** (`0003_recruitment_public.sql`) — `job_postings` exists, with the `anon_view_open_postings` policy already in place.
+- **Task 8** (seed + RLS tests) — seeding writes to a live database Phase 1 does not own (spec §3.4); the RLS assertions moved into Task 6 as read-only contracts.
+- **Task 9** (typed client) — became Task 5.
+
+---
+
 ## Track 1 Definition of Done
 
 All of the following must hold before Track 2 begins:
@@ -1396,11 +1031,12 @@ All of the following must hold before Track 2 begins:
 1. `npm run typecheck` — no errors
 2. `npm run build` — succeeds
 3. `npm test` — passes (`cn`, tokens, supabase client)
-4. `npx supabase db reset` — three migrations plus seed apply cleanly
-5. `npm run test:db` — 8 RLS tests pass
-6. `npm run lint` — no errors
-7. `npm run dev` starts in under 5 seconds, confirming `integration/` is excluded from the watcher
-8. `git status` is clean, and no file under `integration/` has a modification timestamp later than the start of this track
+4. `npm run test:db` — 8 contract tests pass against `jmac-suite`
+5. `npm run lint` — no errors
+6. `npm run dev` starts in under 5 seconds, confirming `integration/` is excluded from the watcher
+7. `git status` is clean, and `.env` is untracked
+8. No file under `integration/` has a modification timestamp later than the start of this track
+9. The `db-baseline.txt` diff is empty — Phase 1 wrote nothing to `jmac-suite`
 
 ---
 
@@ -1409,3 +1045,5 @@ All of the following must hold before Track 2 begins:
 Tracks 2 (28 shared components), 3 (layouts and authentication), and 4 (landing page and careers) are specified in §5–§7 of the design document. Their plans are written immediately before each track executes, not now.
 
 This is deliberate. A plan must contain real import paths, real prop names, and real test code — no placeholders. Writing Track 3's route-guard tests today would mean inventing the exact signature of a `Button` that Track 2 has not built yet, and any drift between the guess and the reality becomes a plan that lies. Each track's plan is written against the code that actually exists when it starts.
+
+Track 3 carries one open question from the revision: the authorization services in spec §4.2 read `my_permissions()` and `my_roles()`, and the passwords for the six seeded accounts are recorded nowhere on this host. Obtaining or resetting them is a Track 3 step — and resetting a password is a write, so it needs the same authorization as any other change to `jmac-suite`.
