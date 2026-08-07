@@ -1,5 +1,12 @@
 @import 'tailwindcss';
 
+/* Supplies animate-in / animate-out and the fade / zoom / slide keyframes that
+   Radix's data-[state=open|closed] attributes drive. Spec 5.3 asks for 150ms
+   overlay transitions; without this the shadcn-style animation classes compile
+   to nothing and every overlay appears instantly. The global
+   prefers-reduced-motion block below still neutralises all of it. */
+@import 'tw-animate-css';
+
 @import '@fontsource/inter/400.css';
 @import '@fontsource/inter/500.css';
 @import '@fontsource/inter/600.css';
