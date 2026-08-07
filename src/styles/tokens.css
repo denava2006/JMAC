@@ -1,0 +1,64 @@
+:root {
+  /* ---- JMAC brand palette (PROJECT_CONTEXT.md) ---- */
+  --jmac-navy: #0F172A;
+  --jmac-blue: #1D4ED8;
+  --jmac-sky: #38BDF8;
+  --jmac-canvas: #F8FAFC;
+  --jmac-surface: #FFFFFF;
+  --jmac-line: #E2E8F0;
+  --jmac-body: #64748B;
+  --jmac-success: #22C55E;
+  --jmac-warning: #F59E0B;
+  --jmac-error: #EF4444;
+
+  /* Squarer than Harmony Suite's 0.75rem. The brief names SAP Fiori and
+     Microsoft 365, which are less rounded. */
+  --radius: 0.5rem;
+
+  /* Three levels only -- PROJECT_CONTEXT.md rejects large shadows, so
+     borders carry most of the separation. */
+  --shadow-sm: 0 1px 2px 0 rgb(15 23 42 / 0.04);
+  --shadow-md: 0 2px 8px -1px rgb(15 23 42 / 0.08);
+  --shadow-lg: 0 8px 24px -4px rgb(15 23 42 / 0.10);
+}
+
+@theme inline {
+  --color-background: var(--jmac-canvas);
+  --color-surface: var(--jmac-surface);
+  --color-surface-foreground: var(--jmac-navy);
+  --color-border: var(--jmac-line);
+  --color-input: var(--jmac-line);
+
+  /* Primary hover moves navy -> blue, exactly as PROJECT_CONTEXT.md
+     specifies. This is a hue change rather than a shade change, so primary
+     buttons visibly switch colour family on hover. Kept as specified; change
+     this one line to make hover a navy tint instead. */
+  --color-primary: var(--jmac-navy);
+  --color-primary-hover: var(--jmac-blue);
+  --color-primary-foreground: var(--jmac-surface);
+
+  --color-accent: var(--jmac-sky);
+  --color-accent-foreground: var(--jmac-navy);
+
+  --color-heading: var(--jmac-navy);
+  --color-body: var(--jmac-body);
+  --color-muted: var(--jmac-canvas);
+  --color-muted-foreground: var(--jmac-body);
+
+  --color-success: var(--jmac-success);
+  --color-warning: var(--jmac-warning);
+  --color-error: var(--jmac-error);
+  --color-success-foreground: var(--jmac-surface);
+  --color-warning-foreground: var(--jmac-navy);
+  --color-error-foreground: var(--jmac-surface);
+
+  --color-ring: var(--jmac-blue);
+
+  --radius-sm: calc(var(--radius) - 2px);
+  --radius-md: var(--radius);
+  --radius-lg: calc(var(--radius) + 2px);
+  --radius-xl: calc(var(--radius) + 6px);
+
+  --font-sans: 'Inter', ui-sans-serif, system-ui, sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, monospace;
+}

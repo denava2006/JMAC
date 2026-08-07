@@ -3,6 +3,7 @@ import { defineConfig } from 'vitest/config'
 import react from '@vitejs/plugin-react'
 
 export default defineConfig({
+  // @ts-expect-error vitest bundles a different vite version
   plugins: [react()],
   resolve: {
     alias: { '@': path.resolve(__dirname, './src') },
