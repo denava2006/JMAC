@@ -1274,7 +1274,7 @@ insert into public.job_postings (
 - [ ] **Step 4: Run the tests to verify they pass**
 
 Run: `npx supabase db reset && npm run test:db`
-Expected: PASS, 9 tests. If `VITE_SUPABASE_ANON_KEY` is unset the suite fails with the explanatory message from `beforeAll` — populate `.env` as Task 4 Step 4 describes.
+Expected: PASS, 8 tests. If `VITE_SUPABASE_ANON_KEY` is unset the suite fails with the explanatory message from `beforeAll` — populate `.env` as Task 4 Step 4 describes.
 
 - [ ] **Step 5: Commit**
 
@@ -1397,7 +1397,7 @@ All of the following must hold before Track 2 begins:
 2. `npm run build` — succeeds
 3. `npm test` — passes (`cn`, tokens, supabase client)
 4. `npx supabase db reset` — three migrations plus seed apply cleanly
-5. `npm run test:db` — 9 RLS tests pass
+5. `npm run test:db` — 8 RLS tests pass
 6. `npm run lint` — no errors
 7. `npm run dev` starts in under 5 seconds, confirming `integration/` is excluded from the watcher
 8. `git status` is clean, and no file under `integration/` has a modification timestamp later than the start of this track
