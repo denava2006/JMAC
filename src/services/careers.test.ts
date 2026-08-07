@@ -44,13 +44,9 @@ describe('isAcceptingApplications', () => {
 
 describe('EMPLOYMENT_TYPE_LABEL', () => {
   it('covers every value of the employment_type enum', () => {
-    // The enum is full_time, part_time, contract, internship. A missing label
-    // renders a raw database value like "part_time" on the careers page.
-    expect(Object.keys(EMPLOYMENT_TYPE_LABEL).sort()).toEqual([
-      'contract',
-      'full_time',
-      'internship',
-      'part_time',
-    ])
+    // jmac-suite's enum is exactly (regular, part_time). This assertion is the
+    // guard against re-importing HRMS's four-value set, which would leave
+    // 'regular' unlabelled and print the raw value on the careers page.
+    expect(Object.keys(EMPLOYMENT_TYPE_LABEL).sort()).toEqual(['part_time', 'regular'])
   })
 })

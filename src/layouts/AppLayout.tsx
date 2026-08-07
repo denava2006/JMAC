@@ -12,9 +12,11 @@ import { SidebarNav } from '@/layouts/Sidebar'
  * - tablet (md to lg)   — a 64px icon rail, labels in tooltips
  * - mobile (below md)   — a drawer over a scrim, opened from the header
  *
- * The drawer is only mounted below `lg`, so the same nav is never in the tree
- * twice — duplicate landmarks confuse screen-reader rotors, and duplicate
- * NavLinks would announce every destination twice.
+ * All three use one SidebarNav. An earlier version rendered a collapsed copy
+ * beside an expanded one and hid each with a breakpoint class, which put two
+ * `nav` landmarks labelled "Main" in the accessibility tree — a screen-reader
+ * user heard every destination twice. The rail is now a CSS state of the one
+ * nav, and the drawer only mounts while open.
  */
 export function AppLayout() {
   const [navOpen, setNavOpen] = useState(false)
@@ -29,8 +31,7 @@ export function AppLayout() {
             <span className="hidden lg:inline">JMAC</span>
           </span>
         </div>
-        <SidebarNav collapsed className="lg:hidden" />
-        <SidebarNav className="hidden lg:flex" />
+        <SidebarNav />
       </aside>
 
       {/* Mobile drawer */}

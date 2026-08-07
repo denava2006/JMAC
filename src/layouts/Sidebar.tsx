@@ -28,15 +28,24 @@ function iconFor(name: string): LucideIcon {
   return MODULE_ICONS[name] ?? LayoutDashboard
 }
 
-export interface SidebarProps {
-  /** Collapsed to an icon rail. The tablet breakpoint sets this; the mobile
-   *  drawer never does, because a rail inside a drawer is just a small menu. */
-  collapsed?: boolean
+export interface SidebarNavProps {
   onNavigate?: () => void
   className?: string
 }
 
-export function SidebarNav({ collapsed = false, onNavigate, className }: SidebarProps) {
+/**
+ * One navigation, three widths.
+ *
+ * The tablet icon rail is a CSS state, not a second component. Rendering a
+ * collapsed copy alongside an expanded one — even with one of them display:none
+ * — puts two `nav` landmarks with the same label in the accessibility tree, and
+ * a screen-reader user hears every destination twice.
+ *
+ * `sr-only lg:not-sr-only` is what makes that work: below `lg` the label is
+ * available to assistive technology but takes no space, and from `lg` up it
+ * renders normally.
+ */
+export function SidebarNav({ onNavigate, className }: SidebarNavProps) {
   const { authorization } = useAuth()
 
   return (
@@ -49,13 +58,13 @@ export function SidebarNav({ collapsed = false, onNavigate, className }: Sidebar
             to={module.route}
             end={module.route === '/dashboard'}
             onClick={onNavigate}
-            title={collapsed ? module.name : undefined}
+            title={module.name}
             className={({ isActive }) =>
               cn(
-                'flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors',
+                'flex items-center gap-3 rounded-md py-2 text-sm font-medium transition-colors',
+                'justify-center px-0 lg:justify-start lg:px-3',
                 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
                 'focus-visible:ring-offset-2 focus-visible:ring-offset-surface',
-                collapsed && 'justify-center px-0',
                 isActive
                   ? 'bg-primary text-primary-foreground'
                   : 'text-body hover:bg-muted hover:text-heading'
@@ -63,13 +72,13 @@ export function SidebarNav({ collapsed = false, onNavigate, className }: Sidebar
             }
           >
             <Icon className="size-4 shrink-0" aria-hidden="true" />
-            {collapsed ? <span className="sr-only">{module.name}</span> : <span>{module.name}</span>}
+            <span className="sr-only lg:not-sr-only">{module.name}</span>
           </NavLink>
         )
       })}
 
       {authorization.modules.length === 0 ? (
-        <p className={cn('px-3 py-2 text-sm text-muted-foreground', collapsed && 'sr-only')}>
+        <p className="px-3 py-2 text-sm text-muted-foreground">
           No modules are assigned to your account.
         </p>
       ) : null}

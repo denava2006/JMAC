@@ -85,11 +85,12 @@ export function isAcceptingApplications(posting: Pick<PublicJobPosting, 'closing
   return !isPastClosingDate(posting.closingDate)
 }
 
+/** jmac-suite's employment_type enum is (regular, part_time) -- two values,
+ *  not HRMS's four. Labelling the wrong set renders a raw database value like
+ *  "regular" on the careers page for every full-time role. */
 export const EMPLOYMENT_TYPE_LABEL: Record<string, string> = {
-  full_time: 'Full time',
+  regular: 'Full time',
   part_time: 'Part time',
-  contract: 'Contract',
-  internship: 'Internship',
 }
 
 export const openPositionsQueryKey = ['public', 'job-postings'] as const

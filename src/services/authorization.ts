@@ -9,6 +9,22 @@ import {
 } from '@/lib/permissions'
 
 /**
+ * Modules withheld from the interface for this phase, whatever the database
+ * says.
+ *
+ * PROJECT_CONTEXT.md: "The Finance Management System is currently under
+ * development and must NOT be integrated during this phase." The database
+ * disagrees for a good reason -- a cashier holds request.create and
+ * request.view so they can file an expense claim, and my_modules() surfaces
+ * Finance to anyone holding any finance permission. That is correct once
+ * Finance ships and wrong until then, so it is filtered here rather than by
+ * removing permissions that the finance module will need.
+ *
+ * Delete this list when Finance is in scope.
+ */
+const MODULES_OUT_OF_SCOPE = new Set(['finance'])
+
+/**
  * Reads the signed-in user's authorization from the database.
  *
  * All three answers come from the helpers RLS itself uses — `my_permissions()`,
@@ -41,6 +57,7 @@ export async function fetchAuthorization(): Promise<Authorization> {
       })
     ),
     modules: (modules.data ?? [])
+      .filter((row) => !MODULES_OUT_OF_SCOPE.has(row.key))
       .map(
         (row): UserModule => ({
           key: row.key,
