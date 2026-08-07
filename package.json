@@ -12,7 +12,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:db": "vitest run --config vitest.db.config.ts",
-    "db:types": "supabase gen types typescript --db-url postgresql://postgres:postgres@127.0.0.1:56322/postgres > src/types/database.types.ts"
+    "db:types": "supabase gen types typescript --db-url postgresql://postgres:postgres@127.0.0.1:56322/postgres > src/types/database.types.ts",
+    "shots": "node scripts/screenshot.mjs"
   },
   "dependencies": {
     "@fontsource/ibm-plex-mono": "^5.2.7",
@@ -55,6 +56,7 @@
     "@vitejs/plugin-react": "^6.0.3",
     "jsdom": "^25.0.1",
     "oxlint": "^1.71.0",
+    "playwright": "^1.62.1",
     "supabase": "^2.109.1",
     "typescript": "~6.0.2",
     "vite": "^8.1.1",
