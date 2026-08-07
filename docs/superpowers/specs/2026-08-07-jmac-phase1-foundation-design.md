@@ -408,7 +408,10 @@ default answer is no animation.
 
 ## 6. Shared components
 
-28 components, hand-authored on Radix primitives following shadcn conventions.
+30 components, hand-authored on Radix primitives following shadcn conventions.
+(The brief lists 28; it counts Modal and Dialog separately — they are one
+component — and this design adds Popover and DataTable, which the brief's
+Dropdown and Table imply but do not name.)
 Hand-authored rather than CLI-generated for two reasons: it matches HRMS, and
 the brief requires avoiding shadcn's default appearance — customising generated
 files drifts from the registry anyway.
@@ -514,7 +517,7 @@ in a working, verifiable state.
 | Track | Contents | Verified by |
 |---|---|---|
 | 1. Foundation | Vite app, tooling, design tokens, connection to `jmac-suite`, generated types, typed client, read-only DB contract tests | Criteria 1–5, 11 |
-| 2. Components | 28 shared components + tests | Criteria 1–3 |
+| 2. Components | 30 shared components + tests, split into plans 2A (primitives, feedback) and 2B (overlays, data, date) | Criteria 1–3 |
 | 3. Layouts & auth | Three layouts, sidebar, header, AuthProvider, authorization services, guards, three auth pages | Criteria 6, 8, 9 |
 | 4. Landing & careers | Nine landing sections, careers list and detail, live data; decide §3.4 | Criteria 7, 9 |
 

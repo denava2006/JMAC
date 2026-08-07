@@ -1265,7 +1265,7 @@ All of the following must hold before Track 2 begins:
 
 ## Tracks 2–4
 
-Tracks 2 (28 shared components), 3 (layouts and authentication), and 4 (landing page and careers) are specified in §5–§7 of the design document. Their plans are written immediately before each track executes, not now.
+Tracks 2 (30 shared components), 3 (layouts and authentication), and 4 (landing page and careers) are specified in §5–§7 of the design document. Their plans are written immediately before each track executes, not now.
 
 This is deliberate. A plan must contain real import paths, real prop names, and real test code — no placeholders. Writing Track 3's route-guard tests today would mean inventing the exact signature of a `Button` that Track 2 has not built yet, and any drift between the guess and the reality becomes a plan that lies. Each track's plan is written against the code that actually exists when it starts.
 
