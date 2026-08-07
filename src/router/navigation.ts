@@ -1,111 +1,95 @@
-import type { PermissionKey } from '@/lib/permissions'
+import type { PermissionKey, RoleKey } from '@/lib/permissions'
 
 /**
- * The JMAC navigation, as PROJECT_CONTEXT.md specifies it.
+ * The JMAC sidebar: one flat list, no collapsible groups.
  *
- * Why this is written here rather than read from `my_modules()`: the database
- * answers "which business areas may this person enter" — core, hrms, pos,
- * finance. That is not an information architecture. The brief asks for
- * Dashboard / People / Sales / Reports / Administration / Settings, with named
- * sub-pages beneath, and those groupings are a product decision.
+ * Shape and labels follow the two reference apps, because that is the
+ * navigation the people using this platform already know:
+ *   integration/HRMS/.../components/layout/Sidebar.tsx
+ *   integration/POS/src/components/AppLayout.tsx
  *
- * What is *not* decided here is access. Every entry declares the permission
- * key the database already governs, and the sidebar filters on it. So the
- * labels and the shape are ours; who sees them is still Postgres's answer.
+ * Visibility is decided per item, not per module. `my_modules()` answers a
+ * coarser question — "may this person enter HRMS at all" — which is why an
+ * HR manager and an HR staffer were seeing an identical menu.
  *
- * `status` exists because most of these pages arrive in Phases 3 and 4. An
- * entry marked 'planned' renders disabled rather than linking to a 404 —
- * showing the shape of the platform without pretending it is finished.
+ * An item is visible when every condition it declares passes, with any-of
+ * inside each: `permissions: ['a','b']` means "a or b", and adding `roles`
+ * narrows further.
  */
 export interface NavItem {
   label: string
-  /** Omitted for planned items, which are not links yet. */
-  to?: string
-  /** Any one of these grants visibility. Empty means everyone signed in. */
-  permissions: PermissionKey[]
-  status: 'ready' | 'planned'
-}
-
-export interface NavGroup {
-  label: string
   icon: string
-  /** A group with a route is itself a destination (Dashboard); one without is
-   *  only a heading for its children. */
+  /** Omitted while the page is still 'planned'. */
   to?: string
-  permissions: PermissionKey[]
+  permissions?: PermissionKey[]
+  /**
+   * Used only where the permission catalogue cannot express the split.
+   *
+   * HRMS itself works this way — its `canPostJobs` and `canScreenApplicants`
+   * are role predicates, not permission checks — so this mirrors the source
+   * rather than inventing a rule. RLS remains the real boundary either way;
+   * this only decides what is worth showing.
+   */
+  roles?: RoleKey[]
   status: 'ready' | 'planned'
-  items: NavItem[]
+  /** The group this item belongs to. Set on *every* item in the group, not
+   *  just the first: the sidebar renders a heading when the section changes
+   *  between visible items, so hiding the first item of a section no longer
+   *  takes its heading with it. Purely a label — nothing collapses. */
+  section?: string
 }
 
-export const NAVIGATION: NavGroup[] = [
+/** Roles that oversee everything and should never be filtered out of a menu
+ *  by a narrower role check. */
+const ELEVATED: RoleKey[] = ['system_administrator', 'owner', 'general_manager']
+
+export const NAVIGATION: NavItem[] = [
+  { label: 'Dashboard', icon: 'LayoutDashboard', to: '/dashboard', permissions: ['dashboard.view'], status: 'ready' },
+
+  // ---- People -------------------------------------------------------------
+  // Job Posting is HR Staff's own process and Recruitment is the HR Manager's
+  // — the separation of duties HRMS encodes, so the person who advertises a
+  // role is not the person who screens the applicants for it.
   {
-    label: 'Dashboard',
-    icon: 'LayoutDashboard',
-    to: '/dashboard',
-    permissions: ['dashboard.view'],
-    status: 'ready',
-    items: [],
-  },
-  {
-    label: 'People',
-    icon: 'Users',
-    permissions: [
-      'recruitment.view',
-      'applicant.view',
-      'employee.view',
-      'attendance.view',
-      'leave.view',
-      'payroll.review',
-    ],
+    label: 'Job Posting',
+    icon: 'Briefcase',
+    to: '/dashboard/job-postings',
+    roles: ['hr_staff', ...ELEVATED],
     status: 'planned',
-    items: [
-      { label: 'Recruitment', to: '/dashboard/people/recruitment', permissions: ['recruitment.view'], status: 'planned' },
-      { label: 'Applicants', to: '/dashboard/people/applicants', permissions: ['applicant.view'], status: 'planned' },
-      { label: 'Employees', to: '/dashboard/people/employees', permissions: ['employee.view'], status: 'planned' },
-      { label: 'Attendance', to: '/dashboard/people/attendance', permissions: ['attendance.view'], status: 'planned' },
-      { label: 'Leave', to: '/dashboard/people/leave', permissions: ['leave.view'], status: 'planned' },
-      { label: 'Payroll', to: '/dashboard/people/payroll', permissions: ['payroll.review'], status: 'planned' },
-    ],
+    section: 'People',
   },
   {
-    label: 'Sales',
-    icon: 'ShoppingCart',
-    permissions: ['product.view', 'inventory.view', 'sales.view'],
+    label: 'Recruitment',
+    icon: 'ClipboardList',
+    to: '/dashboard/recruitment',
+    permissions: ['applicant.screen'],
     status: 'planned',
-    items: [
-      { label: 'Products', to: '/dashboard/sales/products', permissions: ['product.view'], status: 'planned' },
-      { label: 'Inventory', to: '/dashboard/sales/inventory', permissions: ['inventory.view'], status: 'planned' },
-      { label: 'Orders', to: '/dashboard/sales/orders', permissions: ['sales.view'], status: 'planned' },
-      { label: 'Sales', to: '/dashboard/sales/transactions', permissions: ['sales.view'], status: 'planned' },
-    ],
+    section: 'People',
   },
-  {
-    label: 'Reports',
-    icon: 'BarChart3',
-    to: '/dashboard/reports',
-    permissions: ['report.view'],
-    status: 'planned',
-    items: [],
-  },
-  {
-    label: 'Administration',
-    icon: 'Settings',
-    permissions: ['user.view', 'role.view', 'branch.view', 'department.view', 'activity_log.view'],
-    status: 'planned',
-    items: [
-      { label: 'Users', to: '/dashboard/admin/users', permissions: ['user.view'], status: 'planned' },
-      { label: 'Roles', to: '/dashboard/admin/roles', permissions: ['role.view'], status: 'planned' },
-      { label: 'Branches', to: '/dashboard/admin/branches', permissions: ['branch.view'], status: 'planned' },
-      { label: 'Departments', to: '/dashboard/admin/departments', permissions: ['department.view'], status: 'planned' },
-      { label: 'Audit logs', to: '/dashboard/admin/audit', permissions: ['activity_log.view'], status: 'planned' },
-    ],
-  },
-  {
-    label: 'Settings',
-    icon: 'Cog',
-    to: '/dashboard/settings',
-    permissions: ['company.view'],
-    status: 'planned',
-    items: [],
-  },
+  { label: 'Interviews', icon: 'CalendarSearch', to: '/dashboard/interviews', permissions: ['interview.manage'], status: 'planned', section: 'People' },
+  { label: 'Deployment', icon: 'Truck', to: '/dashboard/deployment', permissions: ['deployment.view'], status: 'planned', section: 'People' },
+  { label: 'Employees', icon: 'Users', to: '/dashboard/employees', permissions: ['employee.view'], status: 'planned', section: 'People' },
+  { label: 'Attendance', icon: 'CalendarClock', to: '/dashboard/attendance', permissions: ['attendance.view'], status: 'planned', section: 'People' },
+  { label: 'Leave', icon: 'CalendarCheck', to: '/dashboard/leave', permissions: ['leave.view'], status: 'planned', section: 'People' },
+  { label: 'Payroll', icon: 'Wallet', to: '/dashboard/payroll', permissions: ['payroll.review'], status: 'planned', section: 'People' },
+
+  // ---- Sales --------------------------------------------------------------
+  { label: 'POS', icon: 'ShoppingCart', to: '/dashboard/pos', permissions: ['sales.create'], status: 'planned', section: 'Sales' },
+  // product.manage rather than inventory.view: a cashier holds inventory.view
+  // so they can check stock at the till, but managing stock is not their job.
+  { label: 'Inventory', icon: 'Package', to: '/dashboard/inventory', permissions: ['product.manage'], status: 'planned', section: 'Sales' },
+  { label: 'Categories', icon: 'Tags', to: '/dashboard/categories', permissions: ['category.manage'], status: 'planned', section: 'Sales' },
+  // Both roles hold sales.view, so the split between every transaction and
+  // only your own is a role question, exactly as it is in the POS app.
+  { label: 'Transactions', icon: 'Receipt', to: '/dashboard/transactions', roles: ['pos_manager', ...ELEVATED], status: 'planned', section: 'Sales' },
+  { label: 'My Transactions', icon: 'Receipt', to: '/dashboard/my-transactions', roles: ['cashier'], status: 'planned', section: 'Sales' },
+
+  // ---- Reports & administration -------------------------------------------
+  { label: 'Reports', icon: 'BarChart3', to: '/dashboard/reports', permissions: ['report.view'], status: 'planned', section: 'Insights' },
+  { label: 'Users', icon: 'ShieldCheck', to: '/dashboard/admin/users', permissions: ['user.view'], status: 'planned', section: 'Administration' },
+  { label: 'Roles', icon: 'ShieldCheck', to: '/dashboard/admin/roles', permissions: ['role.view'], status: 'planned', section: 'Administration' },
+  { label: 'Branches', icon: 'MapPin', to: '/dashboard/admin/branches', permissions: ['branch.view'], status: 'planned', section: 'Administration' },
+  { label: 'Departments', icon: 'Building2', to: '/dashboard/admin/departments', permissions: ['department.view'], status: 'planned', section: 'Administration' },
+  { label: 'Audit Logs', icon: 'ClipboardCheck', to: '/dashboard/admin/audit', permissions: ['activity_log.view'], status: 'planned', section: 'Administration' },
+  { label: 'Settings', icon: 'Cog', to: '/dashboard/settings', permissions: ['company.view'], status: 'planned', section: 'Administration' },
 ]

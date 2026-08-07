@@ -1,144 +1,69 @@
 import {
   BarChart3,
-  ChevronDown,
+  Briefcase,
+  Building2,
+  CalendarCheck,
+  CalendarClock,
+  CalendarSearch,
+  ClipboardCheck,
+  ClipboardList,
   Cog,
   LayoutDashboard,
-  Settings,
+  MapPin,
+  Package,
+  Receipt,
+  ShieldCheck,
   ShoppingCart,
+  Tags,
+  Truck,
   Users,
+  Wallet,
   type LucideIcon,
 } from 'lucide-react'
-import { useState } from 'react'
-import { NavLink, useLocation } from 'react-router-dom'
+import { NavLink } from 'react-router-dom'
 import { useAuth } from '@/contexts/AuthContext'
-import { canAny, type Authorization } from '@/lib/permissions'
+import { canAny, hasRole, type Authorization } from '@/lib/permissions'
 import { cn } from '@/lib/utils'
-import { NAVIGATION, type NavGroup, type NavItem } from '@/router/navigation'
+import { NAVIGATION, type NavItem } from '@/router/navigation'
 
 const ICONS: Record<string, LucideIcon> = {
   LayoutDashboard,
+  Briefcase,
+  ClipboardList,
+  CalendarSearch,
+  Truck,
   Users,
+  CalendarClock,
+  CalendarCheck,
+  Wallet,
   ShoppingCart,
+  Package,
+  Tags,
+  Receipt,
   BarChart3,
-  Settings,
+  ShieldCheck,
+  MapPin,
+  Building2,
+  ClipboardCheck,
   Cog,
 }
 
-/** Empty permissions means "anyone signed in" — `canAny` returns false for an
- *  empty list, which would hide the entry instead. */
-function visible(auth: Authorization, permissions: NavItem['permissions']): boolean {
-  return permissions.length === 0 || canAny(auth, permissions)
+/** Every condition an item declares must pass, any-of within each. An item
+ *  declaring neither is visible to anyone signed in. */
+export function isVisible(auth: Authorization, item: NavItem): boolean {
+  if (item.permissions && !canAny(auth, item.permissions)) return false
+  if (item.roles && !item.roles.some((role) => hasRole(auth, role))) return false
+  return true
 }
 
-const linkClasses = (isActive: boolean, depth: 0 | 1) =>
+const rowClasses = (active: boolean) =>
   cn(
-    'flex items-center gap-3 rounded-md py-2 text-sm transition-colors',
-    depth === 0 ? 'font-medium' : 'font-normal',
+    'flex items-center gap-3 rounded-md py-2 text-sm font-medium transition-colors',
     'justify-center px-0 lg:justify-start lg:px-3',
-    depth === 1 && 'lg:pl-10',
     'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
     'focus-visible:ring-offset-2 focus-visible:ring-offset-surface',
-    isActive ? 'bg-primary text-primary-foreground' : 'text-body hover:bg-muted hover:text-heading'
+    active ? 'bg-primary text-primary-foreground' : 'text-body hover:bg-muted hover:text-heading'
   )
-
-/** A page that does not exist yet. Rendered rather than hidden so the shape of
- *  the platform is visible, but not as a link — a menu item that 404s is worse
- *  than one that says "not yet". */
-function PlannedEntry({ label, depth }: { label: string; depth: 0 | 1 }) {
-  return (
-    <span
-      aria-disabled="true"
-      title={`${label} — coming in a later phase`}
-      className={cn(
-        'flex cursor-not-allowed items-center gap-3 rounded-md py-2 text-sm opacity-50',
-        depth === 0 ? 'font-medium' : 'font-normal',
-        'justify-center px-0 lg:justify-start lg:px-3',
-        depth === 1 && 'lg:pl-10',
-        'text-body'
-      )}
-    >
-      <span className="sr-only lg:not-sr-only">{label}</span>
-      <span className="sr-only"> (coming soon)</span>
-    </span>
-  )
-}
-
-function Group({ group, onNavigate }: { group: NavGroup; onNavigate?: () => void }) {
-  const { authorization } = useAuth()
-  const location = useLocation()
-
-  const items = group.items.filter((item) => visible(authorization, item.permissions))
-  const hasChildren = items.length > 0
-  const containsActive = Boolean(
-    group.to ? location.pathname.startsWith(group.to) : items.some((i) => i.to && location.pathname.startsWith(i.to))
-  )
-  const [open, setOpen] = useState(containsActive)
-
-  const Icon = ICONS[group.icon] ?? LayoutDashboard
-
-  // A leaf group: Dashboard, Reports, Settings.
-  if (!hasChildren) {
-    if (group.status === 'planned' || !group.to) {
-      return (
-        <li>
-          <span className="flex items-center gap-3 px-0 lg:px-3">
-            <Icon className="size-4 shrink-0 opacity-50" aria-hidden="true" />
-            <PlannedEntry label={group.label} depth={0} />
-          </span>
-        </li>
-      )
-    }
-    return (
-      <li>
-        <NavLink to={group.to} end onClick={onNavigate} className={({ isActive }) => linkClasses(isActive, 0)}>
-          <Icon className="size-4 shrink-0" aria-hidden="true" />
-          <span className="sr-only lg:not-sr-only">{group.label}</span>
-        </NavLink>
-      </li>
-    )
-  }
-
-  return (
-    <li>
-      <button
-        type="button"
-        onClick={() => setOpen((value) => !value)}
-        aria-expanded={open}
-        title={group.label}
-        className={cn(
-          'flex w-full items-center gap-3 rounded-md py-2 text-sm font-medium transition-colors',
-          'justify-center px-0 lg:justify-start lg:px-3',
-          'text-body hover:bg-muted hover:text-heading',
-          'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-          'focus-visible:ring-offset-2 focus-visible:ring-offset-surface'
-        )}
-      >
-        <Icon className="size-4 shrink-0" aria-hidden="true" />
-        <span className="sr-only lg:not-sr-only">{group.label}</span>
-        <ChevronDown
-          className={cn('ml-auto hidden size-4 transition-transform lg:block', open && 'rotate-180')}
-          aria-hidden="true"
-        />
-      </button>
-
-      {open ? (
-        <ul className="flex flex-col gap-1">
-          {items.map((item) => (
-            <li key={item.label}>
-              {item.status === 'planned' || !item.to ? (
-                <PlannedEntry label={item.label} depth={1} />
-              ) : (
-                <NavLink to={item.to} onClick={onNavigate} className={({ isActive }) => linkClasses(isActive, 1)}>
-                  <span className="sr-only lg:not-sr-only">{item.label}</span>
-                </NavLink>
-              )}
-            </li>
-          ))}
-        </ul>
-      ) : null}
-    </li>
-  )
-}
 
 export interface SidebarNavProps {
   onNavigate?: () => void
@@ -146,33 +71,72 @@ export interface SidebarNavProps {
 }
 
 /**
- * One navigation, three widths.
+ * One flat navigation, three widths.
  *
- * The tablet icon rail is a CSS state, not a second component. Rendering a
- * collapsed copy alongside an expanded one — even with one hidden — puts two
- * `nav` landmarks with the same label in the accessibility tree, and a
- * screen-reader user hears every destination twice.
+ * Flat by design: an enterprise sidebar that hides Payroll behind a
+ * disclosure costs a click on every visit and hides the shape of the platform.
+ * Section labels group without collapsing.
  *
- * `sr-only lg:not-sr-only` is what makes that work: below `lg` the label is
- * available to assistive technology but takes no space; from `lg` up it
- * renders normally.
+ * The tablet icon rail is a CSS state, not a second component — rendering a
+ * collapsed copy beside an expanded one puts two `nav` landmarks in the
+ * accessibility tree and a screen-reader user hears every destination twice.
+ * `sr-only lg:not-sr-only` gives the label to assistive technology at every
+ * width while showing it only from `lg` up.
  */
 export function SidebarNav({ onNavigate, className }: SidebarNavProps) {
   const { authorization } = useAuth()
-  const groups = NAVIGATION.filter((group) => visible(authorization, group.permissions))
+  const items = NAVIGATION.filter((item) => isVisible(authorization, item))
 
-  // onNavigate goes to the links, never onto the nav element: a click handler
-  // there also fires when a group is expanded, which would close the mobile
-  // drawer instead of revealing the submenu.
+  // The heading is emitted when the section changes between *visible* items,
+  // so it attaches to whichever item survives filtering. Pinning it to one
+  // named item lost the "People" heading for an HR manager, who cannot see
+  // Job Posting — and a role that sees no Sales page gets no Sales heading.
+  let lastSection: string | undefined
+
   return (
     <nav aria-label="Main" className={cn('p-3', className)}>
-      <ul className="flex flex-col gap-1">
-        {groups.map((group) => (
-          <Group key={group.label} group={group} onNavigate={onNavigate} />
-        ))}
+      <ul className="flex flex-col gap-0.5">
+        {items.map((item) => {
+          const Icon = ICONS[item.icon] ?? LayoutDashboard
+          const section = item.section && item.section !== lastSection ? item.section : undefined
+          if (item.section) lastSection = item.section
+
+          return (
+            <li key={item.label}>
+              {section ? (
+                <p className="mt-4 mb-1 hidden px-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground lg:block">
+                  {section}
+                </p>
+              ) : null}
+
+              {item.status === 'planned' || !item.to ? (
+                <span
+                  aria-disabled="true"
+                  title={`${item.label} — coming in a later phase`}
+                  className={cn(rowClasses(false), 'cursor-not-allowed opacity-45 hover:bg-transparent')}
+                >
+                  <Icon className="size-4 shrink-0" aria-hidden="true" />
+                  <span className="sr-only lg:not-sr-only">{item.label}</span>
+                  <span className="sr-only"> (coming soon)</span>
+                </span>
+              ) : (
+                <NavLink
+                  to={item.to}
+                  end={item.to === '/dashboard'}
+                  onClick={onNavigate}
+                  title={item.label}
+                  className={({ isActive }) => rowClasses(isActive)}
+                >
+                  <Icon className="size-4 shrink-0" aria-hidden="true" />
+                  <span className="sr-only lg:not-sr-only">{item.label}</span>
+                </NavLink>
+              )}
+            </li>
+          )
+        })}
       </ul>
 
-      {groups.length === 0 ? (
+      {items.length === 0 ? (
         <p className="px-3 py-2 text-sm text-muted-foreground">
           No modules are assigned to your account.
         </p>
