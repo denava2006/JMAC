@@ -25,17 +25,20 @@ describe('RadioGroup', () => {
     expect(screen.getByRole('radio', { name: 'Full time' })).not.toBeChecked()
   })
 
-  // Asserts roving focus, not selection. In a real browser, selection follows
-  // focus in a radio group and ArrowDown would also check "Part time" — Radix
-  // implements that by setting a flag from a document-level keydown listener,
-  // which fires on the bubble phase, after the item's own handler has already
-  // moved focus. jsdom exposes that ordering; a browser hides it. Asserting
-  // selection here would be asserting something the environment cannot produce.
-  it('moves focus with arrow keys', async () => {
+  // Note the press-and-hold syntax. `{ArrowDown}` presses and releases within
+  // one turn, and Radix clears its select-on-focus flag on keyup — before
+  // roving-focus's deferred focusFirst() runs on the next macrotask. The
+  // selection would then silently not happen, which is not what a real key
+  // press does. Holding the key keeps the flag set for the deferred focus.
+  it('moves focus and selection with arrow keys', async () => {
     render(<Fixture />)
     await userEvent.tab()
     expect(screen.getByRole('radio', { name: 'Full time' })).toHaveFocus()
-    await userEvent.keyboard('{ArrowDown}')
+
+    await userEvent.keyboard('{ArrowDown>}')
     expect(screen.getByRole('radio', { name: 'Part time' })).toHaveFocus()
+    expect(screen.getByRole('radio', { name: 'Part time' })).toBeChecked()
+    expect(screen.getByRole('radio', { name: 'Full time' })).not.toBeChecked()
+    await userEvent.keyboard('{/ArrowDown}')
   })
 })

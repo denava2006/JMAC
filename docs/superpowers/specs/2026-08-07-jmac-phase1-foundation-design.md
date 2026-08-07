@@ -429,8 +429,40 @@ pagination, and column-visibility toggles, taking a `ColumnDef[]` and data.
 Every feature table in Phases 3–6 consumes it; no feature page rebuilds table
 behaviour. `Charts` wraps Recharts with the JMAC palette pre-applied.
 
-Every component is typed, forwards refs, spreads `...props` to its root, and
-composes via `className` through `cn()`. No component reads global state.
+Every component is typed, accepts `ref` as a normal prop (React 19 — no
+`forwardRef`), spreads `...props` to its root, exports a props type named after
+it, and composes via `className` through `cn()` last. No component reads global
+state.
+
+### 6.1 Two variant vocabularies, and which to use
+
+`Button.destructive` and `Badge.error` both resolve to `bg-error`, under
+different names. That is deliberate, not drift:
+
+- Components that **perform** an action take action names: `primary`,
+  `secondary`, `ghost`, `destructive`, `link`. A button is named for what
+  pressing it does.
+- Components that **report** a state take status names: `neutral`, `success`,
+  `warning`, `error`, `info`, `outline`. A badge is named for what it is
+  telling you.
+
+So Track 2B's Toast reports and takes status names; its Card and StatCard are
+containers and take neither. A component that both reports and acts — a toast
+with an undo button — composes the two rather than inventing a third set.
+
+### 6.2 Enforced, not just written down
+
+Two rules in this section are guarded by tests that fail the build, because
+Track 1 established that a rule stated only in prose is a rule nothing
+enforces:
+
+- `src/components/ui/token-discipline.test.ts` sweeps every `.ts`, `.tsx`, and
+  `.css` file under `src/` (except `tokens.css`, which defines the palette) for
+  hex literals, raw Tailwind palette utilities including `bg-white` and
+  `bg-black/50`, inline style colours, `rgb()`/`hsl()`/`oklch()`, and direct
+  `--jmac-*` references that skip the semantic layer.
+- `src/components/ui/focus-ring.test.tsx` asserts every interactive component
+  carries all four `focus-visible:` ring classes.
 
 ---
 

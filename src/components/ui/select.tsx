@@ -8,6 +8,16 @@ export const Select = SelectPrimitive.Root
 export const SelectGroup = SelectPrimitive.Group
 export const SelectValue = SelectPrimitive.Value
 
+/** Named props types for every part. Track 2B's DataTable wraps SelectTrigger
+ *  for its page-size control; without these it would hand-write
+ *  ComponentProps<typeof SelectTrigger> at each call site. */
+export type SelectProps = ComponentProps<typeof SelectPrimitive.Root>
+export type SelectTriggerProps = ComponentProps<typeof SelectPrimitive.Trigger>
+export type SelectContentProps = ComponentProps<typeof SelectPrimitive.Content>
+export type SelectLabelProps = ComponentProps<typeof SelectPrimitive.Label>
+export type SelectItemProps = ComponentProps<typeof SelectPrimitive.Item>
+export type SelectSeparatorProps = ComponentProps<typeof SelectPrimitive.Separator>
+
 export function SelectTrigger({
   className,
   children,
@@ -74,7 +84,7 @@ export function SelectContent({
       <SelectPrimitive.Content
         position={position}
         className={cn(
-          'relative z-50 max-h-96 min-w-32 overflow-hidden rounded-md border border-border',
+          'relative z-dropdown max-h-96 min-w-32 overflow-hidden rounded-md border border-border',
           'bg-surface text-heading shadow-md',
           position === 'popper' && 'data-[side=bottom]:translate-y-1 data-[side=top]:-translate-y-1',
           className
@@ -85,7 +95,12 @@ export function SelectContent({
         <SelectPrimitive.Viewport
           className={cn(
             'p-1',
-            position === 'popper' && 'h-(--radix-select-trigger-height) w-full min-w-(--radix-select-trigger-width)'
+            // Width matches the trigger; height deliberately does not. Radix
+          // sets --radix-select-trigger-height from the popper anchor, so
+          // constraining height here clamps the whole list to one row and
+          // makes an 8-item department picker scroll. jsdom does no layout,
+          // so no test can catch this -- it has to be seen in a browser.
+          position === 'popper' && 'w-full min-w-(--radix-select-trigger-width)'
           )}
         >
           {children}

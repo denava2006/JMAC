@@ -73,6 +73,20 @@
 
   --color-ring: var(--jmac-blue);
 
+  /* Named layers rather than numbers scattered through components. Track 2B
+     adds six portalled surfaces (Dialog, Drawer, Dropdown, Popover, Tooltip,
+     Toast); without a scale each picks its own value and a Select inside a
+     Dialog is the first collision. Ordered by how they stack in practice:
+     a dropdown opens over the page, a modal over everything below it, a
+     popover over the modal that spawned it, a toast over all of it.
+     --z-index-* is Tailwind v4's namespace for this scale; naming them
+     --z-* would define variables that generate no utility at all. */
+  --z-index-dropdown: 30;
+  --z-index-overlay: 40;
+  --z-index-modal: 50;
+  --z-index-popover: 60;
+  --z-index-toast: 70;
+
   --radius-sm: calc(var(--radius) - 2px);
   --radius-md: var(--radius);
   --radius-lg: calc(var(--radius) + 2px);

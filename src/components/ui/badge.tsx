@@ -7,7 +7,11 @@ const badgeVariants = cva(
   {
     variants: {
       variant: {
-        neutral: 'bg-muted text-muted-foreground',
+        // text-heading, not text-muted-foreground: body colour on the muted
+        // surface measures 4.34:1, under the 4.5:1 WCAG AA floor at this text
+        // size. PROJECT_CONTEXT.md fixes the body colour, so the fix belongs
+        // in the pairing here rather than in the token.
+        neutral: 'bg-muted text-heading',
         success: 'bg-success text-success-foreground',
         warning: 'bg-warning text-warning-foreground',
         error: 'bg-error text-error-foreground',
