@@ -1,0 +1,6 @@
+integration/
+node_modules/
+dist/
+.env
+.env.local
+*.tsbuildinfo
