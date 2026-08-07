@@ -3,6 +3,7 @@ import { Navigate, Route, Routes } from 'react-router-dom'
 import { Loader } from '@/components/ui/loader'
 import { AppLayout } from '@/layouts/AppLayout'
 import { AuthLayout } from '@/layouts/AuthLayout'
+import { PublicLayout } from '@/layouts/PublicLayout'
 import { AnonymousOnly, ProtectedRoute } from '@/router/guards'
 
 // Route-level code splitting: nobody signing in should download the dashboard,
@@ -20,6 +21,15 @@ const DashboardPage = lazy(() =>
   import('@/features/dashboard/DashboardPage').then((m) => ({ default: m.DashboardPage }))
 )
 const ComponentGallery = lazy(() => import('@/app/ComponentGallery'))
+const LandingPage = lazy(() =>
+  import('@/features/landing/LandingPage').then((m) => ({ default: m.LandingPage }))
+)
+const CareersPage = lazy(() =>
+  import('@/features/careers/CareersPage').then((m) => ({ default: m.CareersPage }))
+)
+const CareerDetailPage = lazy(() =>
+  import('@/features/careers/CareersPage').then((m) => ({ default: m.CareerDetailPage }))
+)
 
 function Loading() {
   return (
@@ -36,8 +46,35 @@ function Lazy({ children }: { children: ReactNode }) {
 export function AppRoutes() {
   return (
     <Routes>
-      {/* Track 4 replaces this with the landing page. */}
-      <Route path="/" element={<Navigate to="/dashboard" replace />} />
+      {/* Public. Deliberately not behind AnonymousOnly: a signed-in user
+          following a link to the careers page should read it, not be bounced
+          to the dashboard. */}
+      <Route element={<PublicLayout />}>
+        <Route
+          path="/"
+          element={
+            <Lazy>
+              <LandingPage />
+            </Lazy>
+          }
+        />
+        <Route
+          path="/careers"
+          element={
+            <Lazy>
+              <CareersPage />
+            </Lazy>
+          }
+        />
+        <Route
+          path="/careers/:id"
+          element={
+            <Lazy>
+              <CareerDetailPage />
+            </Lazy>
+          }
+        />
+      </Route>
 
       <Route element={<AuthLayout />}>
         <Route
@@ -103,7 +140,7 @@ export function AppRoutes() {
         />
       ) : null}
 
-      <Route path="*" element={<Navigate to="/dashboard" replace />} />
+      <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   )
 }
