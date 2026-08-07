@@ -50,8 +50,12 @@ const PALETTE = new RegExp(
 )
 
 // An inline style setting a colour escapes Tailwind entirely, so neither of
-// the patterns above would see it.
-const INLINE_STYLE_COLOUR = /style=\{\{[^}]*\b(?:color|background|border|fill|stroke|outline)/i
+// the patterns above would see it. Only literals are rejected: some third
+// party components (Recharts' tooltip) accept styles and no className, and
+// `backgroundColor: 'var(--color-surface)'` has not left the token layer --
+// it is reaching the same variable a utility class would.
+const INLINE_STYLE_COLOUR =
+  /\b(?:color|background|backgroundColor|borderColor|fill|stroke|outlineColor|stopColor):\s*['"](?!var\()/
 
 const COLOUR_FUNCTION = /\b(?:rgba?|hsla?|oklch|oklab|lab|lch)\(/
 

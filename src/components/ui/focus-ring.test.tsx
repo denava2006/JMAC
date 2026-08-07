@@ -1,5 +1,6 @@
 import { render, screen } from '@testing-library/react'
 import { beforeAll, describe, expect, it, vi } from 'vitest'
+import * as UI from '@/components/ui'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
@@ -100,11 +101,12 @@ describe('focus ring', () => {
 })
 
 describe('barrel export', () => {
-  // token-discipline.test.ts checks the barrel's file *text*. This actually
-  // imports it, which is what proves the components are reachable the way
-  // every later track will reach them.
-  it('exposes all 14 components through @/components/ui', async () => {
-    const ui = await import('@/components/ui')
+  // token-discipline.test.ts checks the barrel's file *text*. This imports it,
+  // which is what proves the components are reachable the way every later
+  // track will reach them. Static rather than dynamic import: the barrel now
+  // pulls in Recharts, and resolving that inside a test body exceeded the
+  // default timeout under a parallel full-suite run.
+  it('exposes every component through @/components/ui', () => {
     const expected = [
       'Avatar',
       'AvatarFallback',
@@ -127,9 +129,46 @@ describe('barrel export', () => {
       'Skeleton',
       'Switch',
       'Textarea',
+      // Track 2B
+      'Breadcrumb',
+      'Calendar',
+      'Card',
+      'CardContent',
+      'CardHeader',
+      'CardTitle',
+      'Chart',
+      'ChartTooltip',
+      'DataTable',
+      'DatePicker',
+      'Dialog',
+      'DialogContent',
+      'DialogTitle',
+      'Drawer',
+      'DrawerContent',
+      'DropdownMenu',
+      'DropdownMenuContent',
+      'DropdownMenuItem',
+      'Pagination',
+      'Popover',
+      'PopoverContent',
+      'StatCard',
+      'Table',
+      'TableBody',
+      'TableCell',
+      'TableHeader',
+      'TableRow',
+      'Tabs',
+      'TabsContent',
+      'TabsList',
+      'TabsTrigger',
+      'Toaster',
+      'Tooltip',
+      'TooltipContent',
+      'TooltipProvider',
+      'toast',
     ]
     for (const name of expected) {
-      expect(ui[name as keyof typeof ui], `${name} is missing from the barrel`).toBeDefined()
+      expect(UI[name as keyof typeof UI], `${name} is missing from the barrel`).toBeDefined()
     }
   })
 })
