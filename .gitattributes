@@ -1,0 +1,6 @@
+# The database row-count baseline is compared with `diff` against fresh psql
+# output, which is LF. Without this, git checks it out as CRLF on Windows and
+# every line reads as changed -- a false positive on the check that proves
+# Phase 1 wrote nothing to jmac-suite. A safety check that cries wolf is a
+# safety check people learn to ignore.
+docs/db-baseline.txt text eol=lf
