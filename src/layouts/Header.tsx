@@ -1,4 +1,4 @@
-import { Bell, LogOut, Menu, User } from 'lucide-react'
+import { LogOut, Menu, User } from 'lucide-react'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
 import {
@@ -10,6 +10,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { useAuth } from '@/contexts/AuthContext'
+import { NotificationPanel } from '@/features/notifications/NotificationPanel'
 import { cn } from '@/lib/utils'
 
 /** "Maria Santos" -> "MS". Falls back to the first letter of the email when a
@@ -51,10 +52,7 @@ export function Header({ onOpenNav, className }: HeaderProps) {
       <span className="text-sm font-semibold tracking-tight text-heading">JMAC</span>
 
       <div className="ml-auto flex items-center gap-1">
-        <Button variant="ghost" size="icon">
-          <Bell aria-hidden="true" />
-          <span className="sr-only">Notifications</span>
-        </Button>
+        <NotificationPanel />
 
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
