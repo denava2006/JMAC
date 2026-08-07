@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js'
 import { beforeAll, describe, expect, it } from 'vitest'
+import type { Database } from '@/types/database.types'
 
 const URL = process.env.VITE_SUPABASE_URL ?? 'http://127.0.0.1:56321'
 const ANON = process.env.VITE_SUPABASE_ANON_KEY
@@ -12,7 +13,11 @@ beforeAll(() => {
   }
 })
 
-const anon = () => createClient(URL, ANON as string)
+// Typed with <Database> so table names, column names, embedded relations and
+// RPC names below are checked by `tsc -b` rather than being opaque strings.
+// Untyped, a renamed column would break the app's client at compile time while
+// this suite -- the thing meant to warn first -- kept passing.
+const anon = () => createClient<Database>(URL, ANON as string)
 
 describe('public careers contract', () => {
   // job_postings is empty in this environment (db-baseline.txt records
@@ -63,14 +68,46 @@ describe('public careers contract', () => {
 })
 
 describe('identity contract', () => {
+  // These two are the most security-relevant assertions in the suite, so they
+  // must be able to fail for the right reason. They previously read
+  // `error !== null || rows.length === 0`, which cannot: this stack answers
+  // GET /rest/v1/users with `[]` and HTTP 200 whether the anon key is correct,
+  // garbage, or absent entirely, so a completely misconfigured client was
+  // observationally identical to correctly-enforced RLS -- and the `||` meant
+  // any failure at all, including a dead network, satisfied the expectation.
+  //
+  // The control read below is the fix. It runs on the SAME client and hits
+  // departments, which is world-readable and non-empty, so the client must
+  // demonstrably work before the empty result from users is allowed to count
+  // as evidence of anything.
+
   it('exposes no user rows to an anonymous visitor', async () => {
-    const { data, error } = await anon().from('users').select('id, email')
-    expect(error !== null || (data ?? []).length === 0).toBe(true)
+    const client = anon()
+
+    const control = await client.from('departments').select('id').limit(1)
+    expect(control.error).toBeNull()
+    expect(control.data?.length).toBeGreaterThan(0)
+
+    const { data, error } = await client.from('users').select('id, email')
+    expect(error).toBeNull()
+    expect(data).not.toBeNull()
+    // Reading a selected column keeps the select string type-checked:
+    // supabase-js resolves an unknown column to a SelectQueryError row type,
+    // which only fails compilation at a use site like this one.
+    expect((data ?? []).map((row) => row.email)).toEqual([])
   })
 
   it('exposes no profile rows to an anonymous visitor', async () => {
-    const { data, error } = await anon().from('profiles').select('id, email')
-    expect(error !== null || (data ?? []).length === 0).toBe(true)
+    const client = anon()
+
+    const control = await client.from('departments').select('id').limit(1)
+    expect(control.error).toBeNull()
+    expect(control.data?.length).toBeGreaterThan(0)
+
+    const { data, error } = await client.from('profiles').select('id, email')
+    expect(error).toBeNull()
+    expect(data).not.toBeNull()
+    expect((data ?? []).map((row) => row.email)).toEqual([])
   })
 })
 
