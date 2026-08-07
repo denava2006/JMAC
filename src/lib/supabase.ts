@@ -27,3 +27,9 @@ export const supabase = createClient<Database>(url, anonKey, {
 export type { Database }
 export type Tables<T extends keyof Database['public']['Tables']> =
   Database['public']['Tables'][T]['Row']
+
+// Views need their own helper: `profiles` is a view, not a table, so it is
+// absent from Database['public']['Tables'] and unreachable via Tables<T>.
+// Track 3's AuthProvider reads profiles.status.
+export type Views<T extends keyof Database['public']['Views']> =
+  Database['public']['Views'][T]['Row']

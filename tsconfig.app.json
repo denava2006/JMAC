@@ -4,7 +4,7 @@
     "target": "es2023",
     "lib": ["ES2023", "DOM", "DOM.Iterable"],
     "module": "esnext",
-    "types": ["vite/client"],
+    "types": ["vite/client", "node"],
     "skipLibCheck": true,
     "paths": { "@/*": ["./src/*"] },
     "moduleResolution": "bundler",
@@ -20,6 +20,12 @@
     "noFallthroughCasesInSwitch": true,
     "noUncheckedIndexedAccess": true
   },
-  "include": ["src"],
+  // "tests" is included so `tsc -b` checks the database contract suite. That
+  // suite exists to catch schema drift, so leaving its `.from(...)` and
+  // `.select(...)` strings unchecked would defeat its purpose: the typed app
+  // client would fail to compile on a renamed column while the suite meant to
+  // warn first stayed silent. "node" is here because tests/db/contracts.test.ts
+  // reads process.env.
+  "include": ["src", "tests"],
   "exclude": ["integration"]
 }
