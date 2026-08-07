@@ -809,10 +809,15 @@ If any stack-mutating script is present, delete it. `src/lib/no-managed-stack.te
 
 Overwrite the file created in Task 1. The anon key is the standard Supabase local development key and is not a secret — committing it in the example is correct and saves the next developer a lookup.
 
+The "start it from its own project directory" advice an earlier draft carried was wrong: spec §1.1 records that no such directory exists on this host. A developer with a stopped stack needs the docker command, or their next guess is `npx supabase start` — which leads straight toward `supabase init` and the hazard this design exists to prevent.
+
 ```
 # JMAC connects to the local `jmac-suite` Supabase stack, which is managed
-# outside this repository. Start it from its own project directory; this repo
-# never runs `supabase start` or `supabase db reset` against it.
+# outside this repository. No project directory owning it could be located on
+# this host (see spec 1.1), so if the stack is down, start its containers
+# directly: `docker start supabase_db_jmac-suite` and its siblings (see
+# `docker ps -a --filter name=jmac-suite`). This repo never runs
+# `supabase start` or `supabase db reset` against it.
 VITE_SUPABASE_URL=http://127.0.0.1:56321
 VITE_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJleHAiOjE5ODM4MTI5OTZ9.CRXP1A7WOeoJeXxjNni43kdQwgnWNReilDMblYTn_I0
 ```
@@ -958,6 +963,118 @@ Expected: FAIL — `Failed to resolve import "@/lib/supabase"`.
 - [ ] **Step 4: Write `src/lib/supabase.ts`**
 
 Follows HRMS `src/lib/supabase.ts`, with the error message naming each variable individually so a misconfigured environment says which one is wrong.
+
+`Views<T>` is a separate helper from `Tables<T>` because `profiles` is a view, not a table: it is absent from `Database['public']['Tables']` and therefore unreachable through `Tables<T>`. Track 3's AuthProvider reads `profiles.status`, so the helper has a caller waiting.
+
+```ts
+import { createClient } from '@supabase/supabase-js'
+import type { Database } from '@/types/database.types'
+
+const url = import.meta.env.VITE_SUPABASE_URL
+const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
+
+if (!url) {
+  throw new Error(
+    'VITE_SUPABASE_URL is not set. Copy .env.example to .env — see README.md.'
+  )
+}
+
+if (!anonKey) {
+  throw new Error(
+    'VITE_SUPABASE_ANON_KEY is not set. Copy .env.example to .env — see README.md.'
+  )
+}
+
+export const supabase = createClient<Database>(url, anonKey, {
+  auth: {
+    persistSession: true,
+    autoRefreshToken: true,
+    detectSessionInUrl: true,
+  },
+})
+
+export type { Database }
+export type Tables<T extends keyof Database['public']['Tables']> =
+  Database['public']['Tables'][T]['Row']
+
+// Views need their own helper: `profiles` is a view, not a table, so it is
+// absent from Database['public']['Tables'] and unreachable via Tables<T>.
+// Track 3's AuthProvider reads profiles.status.
+export type Views<T extends keyof Database['public']['Views']> =
+  Database['public']['Views'][T]['Row']
+```
+
+- [ ] **Step 5: Run the test to verify it passes**
+
+Run: `npm test -- src/lib/supabase.test.ts`
+Expected: PASS, 3 tests.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add src/lib/supabase.ts src/lib/supabase.test.ts src/types/database.types.ts
+git commit -m "feat: add typed Supabase client and generated database types"
+```
+
+---
+
+## Task 6: Read-only database contract tests
+
+**Files:**
+- Create: `vitest.db.config.ts`, `tests/db/contracts.test.ts`
+- Modify: `package.json` (add `test:db` script if absent)
+
+**Interfaces:**
+- Consumes: Tasks 4 and 5
+- Produces: `npm run test:db` — the gate proving the database contracts Tracks 3 and 4 depend on actually hold
+
+These tests assert what the application relies on. They **never write**. There is no seeding, no fixture setup, and no teardown — the database's existing state is the fixture.
+
+- [ ] **Step 1: Write `vitest.db.config.ts`**
+
+`loadEnv` is required: a node-environment Vitest run does not read `.env`, so without it the suite fails on a missing anon key even when `.env` is correct.
+
+```ts
+import path from 'node:path'
+import { loadEnv } from 'vite'
+import { defineConfig } from 'vitest/config'
+
+const env = loadEnv('development', process.cwd(), 'VITE_')
+
+export default defineConfig({
+  // Same '@' alias as vitest.config.ts. Without it, a contract test importing
+  // anything under src/ resolves differently here than in the unit suite.
+  resolve: {
+    alias: { '@': path.resolve(import.meta.dirname, './src') },
+  },
+  test: {
+    environment: 'node',
+    include: ['tests/db/**/*.test.ts'],
+    testTimeout: 20_000,
+    // Deliberately no fallback key here, unlike vitest.config.ts: these tests
+    // talk to the real jmac-suite stack, and a placeholder would turn a
+    // missing .env into confusing connection failures instead of the explicit
+    // error tests/db/contracts.test.ts raises in beforeAll.
+    env,
+  },
+})
+```
+
+Confirm `package.json` carries this script; add it if missing:
+
+```json
+"test:db": "vitest run --config vitest.db.config.ts"
+```
+
+- [ ] **Step 2: Write the test**
+
+Each assertion below was verified true against the live stack before this plan was written, so a failure means the database changed — which is exactly what the suite is for.
+
+The client is typed (`createClient<Database>`), so table, column, and RPC names are checked at compile time. That is what makes this suite a schema-drift detector rather than a runtime smoke test: rename `positions.title` and `npm run typecheck` fails here, not just in the app.
+
+The identity assertions carry a **control read** on the same client before checking that `users` and `profiles` come back empty. Without it the test cannot distinguish enforced RLS from a broken connection — an anonymous read of `users` returns `[]` with a valid key, a garbage key, or no key at all, so "empty" alone proves nothing.
+
+`tests/db/contracts.test.ts`:
 
 ```ts
 import { createClient } from '@supabase/supabase-js'
