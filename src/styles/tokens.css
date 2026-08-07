@@ -5,18 +5,34 @@
   --jmac-sky: #38BDF8;
   --jmac-canvas: #F8FAFC;
   --jmac-surface: #FFFFFF;
+  --jmac-mist: #F1F5F9;
   --jmac-line: #E2E8F0;
   --jmac-body: #64748B;
   --jmac-success: #22C55E;
   --jmac-warning: #F59E0B;
   --jmac-error: #EF4444;
 
+  /* Text that rides on a dark fill (navy button, error toast) and text that
+     rides on a light fill (sky accent, amber badge). These are deliberately
+     NOT --jmac-surface / --jmac-navy: those two name surface colours, which a
+     dark palette flips. Foreground text must not flip with them, or a primary
+     button turns dark-on-navy. Keeping them separate makes a future dark
+     block a one-file addition. */
+  --jmac-on-dark: #FFFFFF;
+  --jmac-on-light: #0F172A;
+
   /* Squarer than Harmony Suite's 0.75rem. The brief names SAP Fiori and
      Microsoft 365, which are less rounded. */
   --radius: 0.5rem;
+}
 
-  /* Three levels only -- PROJECT_CONTEXT.md rejects large shadows, so
-     borders carry most of the separation. */
+/* Shadows live in a real @theme block, not in :root. Tailwind only builds
+   utilities from @theme, so declaring --shadow-* in :root leaves .shadow-sm
+   emitting Tailwind's stock (and much heavier) default while the JMAC values
+   sit unused. Three levels only -- PROJECT_CONTEXT.md rejects large shadows,
+   so borders carry most of the separation. Non-inline so Tailwind owns the
+   values; tokens.test.ts asserts the compiled output, not this text. */
+@theme {
   --shadow-sm: 0 1px 2px 0 rgb(15 23 42 / 0.04);
   --shadow-md: 0 2px 8px -1px rgb(15 23 42 / 0.08);
   --shadow-lg: 0 8px 24px -4px rgb(15 23 42 / 0.10);
@@ -25,7 +41,7 @@
 @theme inline {
   --color-background: var(--jmac-canvas);
   --color-surface: var(--jmac-surface);
-  --color-surface-foreground: var(--jmac-navy);
+  --color-surface-foreground: var(--jmac-on-light);
   --color-border: var(--jmac-line);
   --color-input: var(--jmac-line);
 
@@ -35,22 +51,25 @@
      this one line to make hover a navy tint instead. */
   --color-primary: var(--jmac-navy);
   --color-primary-hover: var(--jmac-blue);
-  --color-primary-foreground: var(--jmac-surface);
+  --color-primary-foreground: var(--jmac-on-dark);
 
   --color-accent: var(--jmac-sky);
-  --color-accent-foreground: var(--jmac-navy);
+  --color-accent-foreground: var(--jmac-on-light);
 
   --color-heading: var(--jmac-navy);
   --color-body: var(--jmac-body);
-  --color-muted: var(--jmac-canvas);
+  /* Deliberately NOT --jmac-canvas: muted surfaces (Skeleton, EmptyState,
+     inactive Tabs, table zebra striping) must read as distinct from the page
+     behind them, and spec 5.1 forbids components reaching for a hex literal. */
+  --color-muted: var(--jmac-mist);
   --color-muted-foreground: var(--jmac-body);
 
   --color-success: var(--jmac-success);
   --color-warning: var(--jmac-warning);
   --color-error: var(--jmac-error);
-  --color-success-foreground: var(--jmac-surface);
-  --color-warning-foreground: var(--jmac-navy);
-  --color-error-foreground: var(--jmac-surface);
+  --color-success-foreground: var(--jmac-on-dark);
+  --color-warning-foreground: var(--jmac-on-light);
+  --color-error-foreground: var(--jmac-on-dark);
 
   --color-ring: var(--jmac-blue);
 
