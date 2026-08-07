@@ -1175,7 +1175,13 @@ git commit -m "feat(ui): add Badge and Avatar"
 - Consumes: `Button` from `@/components/ui/button`
 - Produces: `Loader` (`size: 'sm' | 'md' | 'lg'`, `label?: string`), `Skeleton`, `EmptyState`, `ErrorState`
 
-`EmptyState` and `ErrorState` take the same prop shape deliberately — `icon`, `title`, `description`, `action` — so a page can swap one for the other without restructuring.
+`EmptyState` and `ErrorState` share their `title` and `description` props, and read as a matched pair, but their actions differ on purpose:
+
+- `EmptyState` takes `action: { label, onClick }`. What an empty list offers varies — "Add employee", "Post a job", "Clear filters" — so the label is the caller's.
+- `ErrorState` takes `onRetry` and labels the button "Try again" itself. The action after a failure is always retry; making the label a prop invites eleven spellings of the same word across the app.
+- `EmptyState` takes an `icon`; `ErrorState` always renders `AlertCircle` in `text-error`. A configurable error icon lets a page put a smiley on a failure.
+
+They are a matched pair in appearance and in the props that carry content, not interchangeable in their APIs. A page swapping one for the other rewrites its action prop, which is one line and correct.
 
 - [ ] **Step 1: Write the failing tests**
 
