@@ -14,7 +14,11 @@
     "test:db": "vitest run --config vitest.db.config.ts",
     "db:types": "supabase gen types typescript --db-url postgresql://postgres:postgres@127.0.0.1:56322/postgres > src/types/database.types.ts",
     "shots": "node scripts/screenshot.mjs",
-    "db:permissions": "node scripts/generate-permissions.mjs"
+    "db:permissions": "node scripts/generate-permissions.mjs",
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui",
+    "test:e2e:headed": "playwright test --headed",
+    "test:e2e:report": "playwright show-report"
   },
   "dependencies": {
     "@fontsource/ibm-plex-mono": "^5.2.7",
@@ -53,6 +57,7 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@playwright/test": "^1.62.1",
     "@testing-library/jest-dom": "^6.6.3",
     "@testing-library/react": "^16.1.0",
     "@testing-library/user-event": "^14.6.3",

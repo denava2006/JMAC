@@ -14,7 +14,11 @@ export default defineConfig({
     environment: 'jsdom',
     globals: true,
     setupFiles: ['./tests/setup.ts'],
-    exclude: ['**/node_modules/**', '**/integration/**', 'tests/db/**'],
+    // e2e/** holds Playwright specs (.spec.ts). Without this exclusion Vitest's
+    // default glob picks them up and dies on `Playwright Test did not expect
+    // test() to be called here` — the two runners must not see each other's
+    // files. Playwright runs e2e; Vitest runs src unit tests and tests/db.
+    exclude: ['**/node_modules/**', '**/integration/**', 'tests/db/**', 'e2e/**'],
     env: {
       // Fallbacks so the unit suite runs on a fresh clone or in CI, where the
       // git-ignored .env does not exist. src/lib/supabase.ts throws at import
