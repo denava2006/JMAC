@@ -55,6 +55,15 @@ const CASHIER = auth(
   ['dashboard.view', 'sales.create', 'sales.view', 'product.view', 'inventory.view']
 )
 
+// system_administrator holds every permission and the admin role.
+const ADMIN = auth(
+  ['system_administrator'],
+  [
+    'dashboard.view', 'user.view', 'role.view', 'branch.view', 'department.view',
+    'activity_log.view', 'company.view', 'report.view', 'employee.view', 'leave.view',
+  ]
+)
+
 describe('HR menus differ by role', () => {
   // The complaint that prompted this: both HR roles saw an identical menu,
   // because visibility came from my_modules() — which only knows "may this
@@ -136,5 +145,35 @@ describe('the navigation itself', () => {
 
   it('shows nothing to someone with no roles and no permissions', () => {
     expect(menuFor(auth([], []))).toEqual([])
+  })
+})
+
+describe('Administration is admin-only', () => {
+  const ADMIN_ITEMS = ['Users', 'Roles', 'Branches', 'Departments', 'Audit Logs', 'Settings']
+
+  it('shows every Administration item to the system administrator', () => {
+    const menu = menuFor(ADMIN)
+    for (const item of ADMIN_ITEMS) {
+      expect(menu).toContain(item)
+    }
+  })
+
+  // The change that prompted this: HR and POS roles hold branch.view and
+  // department.view for their own work, which used to surface Branches and
+  // Departments in their sidebars. Gating on the role, not the permission,
+  // removes the whole section from everyone but the admin.
+  it('hides Branches and Departments from HR, who hold those view permissions', () => {
+    for (const menu of [menuFor(HR_MANAGER), menuFor(HR_STAFF)]) {
+      expect(menu).not.toContain('Branches')
+      expect(menu).not.toContain('Departments')
+    }
+  })
+
+  it('shows no Administration item to any non-admin role', () => {
+    for (const menu of [menuFor(HR_MANAGER), menuFor(HR_STAFF), menuFor(POS_MANAGER), menuFor(CASHIER)]) {
+      for (const item of ADMIN_ITEMS) {
+        expect(menu).not.toContain(item)
+      }
+    }
   })
 })

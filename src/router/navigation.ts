@@ -43,6 +43,13 @@ export interface NavItem {
  *  by a narrower role check. */
 const ELEVATED: RoleKey[] = ['system_administrator', 'owner', 'general_manager']
 
+/** The Administration section — users, roles, branches, audit logs, settings —
+ *  is the system administrator's alone. HR and POS roles hold branch.view and
+ *  department.view for their own work, which used to leak those two items into
+ *  their sidebars; gating the whole section on the role, not the granular
+ *  permission, keeps configuration of the platform itself with the admin. */
+const ADMIN_ROLES: RoleKey[] = ['system_administrator']
+
 export const NAVIGATION: NavItem[] = [
   { label: 'Dashboard', icon: 'LayoutDashboard', to: '/dashboard', permissions: ['dashboard.view'], status: 'ready' },
 
@@ -86,10 +93,12 @@ export const NAVIGATION: NavItem[] = [
 
   // ---- Reports & administration -------------------------------------------
   { label: 'Reports', icon: 'BarChart3', to: '/dashboard/reports', permissions: ['report.view'], status: 'planned', section: 'Insights' },
-  { label: 'Users', icon: 'ShieldCheck', to: '/dashboard/admin/users', permissions: ['user.view'], status: 'planned', section: 'Administration' },
-  { label: 'Roles', icon: 'ShieldCheck', to: '/dashboard/admin/roles', permissions: ['role.view'], status: 'planned', section: 'Administration' },
-  { label: 'Branches', icon: 'MapPin', to: '/dashboard/admin/branches', permissions: ['branch.view'], status: 'planned', section: 'Administration' },
-  { label: 'Departments', icon: 'Building2', to: '/dashboard/admin/departments', permissions: ['department.view'], status: 'planned', section: 'Administration' },
-  { label: 'Audit Logs', icon: 'ClipboardCheck', to: '/dashboard/admin/audit', permissions: ['activity_log.view'], status: 'planned', section: 'Administration' },
-  { label: 'Settings', icon: 'Cog', to: '/dashboard/settings', permissions: ['company.view'], status: 'planned', section: 'Administration' },
+  // Administration is admin-only — gated on the role, not the granular
+  // view permissions (which HR/POS roles partly hold). See ADMIN_ROLES above.
+  { label: 'Users', icon: 'ShieldCheck', to: '/dashboard/admin/users', roles: ADMIN_ROLES, status: 'planned', section: 'Administration' },
+  { label: 'Roles', icon: 'ShieldCheck', to: '/dashboard/admin/roles', roles: ADMIN_ROLES, status: 'planned', section: 'Administration' },
+  { label: 'Branches', icon: 'MapPin', to: '/dashboard/admin/branches', roles: ADMIN_ROLES, status: 'planned', section: 'Administration' },
+  { label: 'Departments', icon: 'Building2', to: '/dashboard/admin/departments', roles: ADMIN_ROLES, status: 'planned', section: 'Administration' },
+  { label: 'Audit Logs', icon: 'ClipboardCheck', to: '/dashboard/admin/audit', roles: ADMIN_ROLES, status: 'planned', section: 'Administration' },
+  { label: 'Settings', icon: 'Cog', to: '/dashboard/settings', roles: ADMIN_ROLES, status: 'planned', section: 'Administration' },
 ]
