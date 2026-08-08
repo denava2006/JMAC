@@ -28,21 +28,31 @@ import {
   type JobPosting,
 } from '@/services/jobPostings'
 
+function toIso(date: Date | undefined): string {
+  if (!date) return ''
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+}
+
+const todayIso = () => toIso(new Date())
+
 const schema = z.object({
   positionId: z.string().min(1, 'Choose a position.'),
   employmentType: z.enum(['regular', 'part_time']),
   vacancies: z.number({ message: 'Enter a number.' }).int().min(1, 'At least one vacancy.').max(999, 'That is a lot of vacancies.'),
   description: z.string().min(20, 'Give at least a couple of sentences.'),
   requirements: z.string().optional(),
-  closingDate: z.string().optional(),
+  // Belt and braces: the calendar already disables past days, but validating
+  // here too means a stale value carried in from an edited draft cannot slip
+  // through. An empty string means "no closing date", which is allowed.
+  closingDate: z
+    .string()
+    .optional()
+    .refine((value) => !value || value >= todayIso(), {
+      message: 'The closing date cannot be in the past.',
+    }),
 })
 
 type JobPostingValues = z.infer<typeof schema>
-
-function toIso(date: Date | undefined): string {
-  if (!date) return ''
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
-}
 
 export function JobPostingDialog({
   posting,
@@ -237,9 +247,12 @@ export function JobPostingDialog({
                   value={field.value ? new Date(`${field.value}T00:00:00`) : undefined}
                   onChange={(date) => field.onChange(toIso(date))}
                   placeholder="No closing date"
+                  minDate={new Date()}
+                  invalid={Boolean(errors.closingDate)}
                 />
               )}
             />
+            {errors.closingDate ? <p className="text-xs text-error">{errors.closingDate.message}</p> : null}
           </div>
 
           <DialogFooter>

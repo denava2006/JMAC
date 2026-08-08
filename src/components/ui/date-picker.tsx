@@ -17,8 +17,32 @@ export interface DatePickerProps {
   /** Passed to date-fns. Defaults to a spelled-out month, because 03/04/2026
    *  is a different date depending on where the reader is from. */
   dateFormat?: string
+  /** Earliest selectable day; anything before it is disabled in the calendar
+   *  and cannot be typed. Pass `new Date()` to forbid past dates. */
+  minDate?: Date
+  /** Latest selectable day; anything after it is disabled. */
+  maxDate?: Date
   id?: string
   className?: string
+}
+
+/** react-day-picker's `before`/`after` matchers are exclusive of the boundary
+ *  day itself, so a minDate of today must disable everything strictly before
+ *  today — which keeps today selectable. Normalised to local midnight so the
+ *  current day is never half-disabled by a time component. */
+export function dayMatchers(minDate?: Date, maxDate?: Date) {
+  const matchers = []
+  if (minDate) {
+    const floor = new Date(minDate)
+    floor.setHours(0, 0, 0, 0)
+    matchers.push({ before: floor })
+  }
+  if (maxDate) {
+    const ceil = new Date(maxDate)
+    ceil.setHours(0, 0, 0, 0)
+    matchers.push({ after: ceil })
+  }
+  return matchers.length > 0 ? matchers : undefined
 }
 
 export function DatePicker({
@@ -28,10 +52,13 @@ export function DatePicker({
   invalid,
   disabled,
   dateFormat = 'd MMMM yyyy',
+  minDate,
+  maxDate,
   id,
   className,
 }: DatePickerProps) {
   const [open, setOpen] = useState(false)
+  const disabledDays = dayMatchers(minDate, maxDate)
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -57,6 +84,7 @@ export function DatePicker({
         <Calendar
           mode="single"
           selected={value}
+          disabled={disabledDays}
           onSelect={(date) => {
             onChange?.(date)
             // Closing on pick is the whole point of a single-date picker;

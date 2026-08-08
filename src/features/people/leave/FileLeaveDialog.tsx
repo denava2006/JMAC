@@ -173,6 +173,7 @@ export function FileLeaveDialog({ open, onOpenChange }: { open: boolean; onOpenC
                   <DatePicker
                     value={field.value ? new Date(`${field.value}T00:00:00`) : undefined}
                     onChange={(date) => field.onChange(toIso(date))}
+                    minDate={new Date()}
                     invalid={Boolean(errors.startDate)}
                   />
                 )}
@@ -188,6 +189,7 @@ export function FileLeaveDialog({ open, onOpenChange }: { open: boolean; onOpenC
                   <DatePicker
                     value={field.value ? new Date(`${field.value}T00:00:00`) : undefined}
                     onChange={(date) => field.onChange(toIso(date))}
+                    minDate={start ? new Date(`${start}T00:00:00`) : new Date()}
                     invalid={Boolean(errors.endDate)}
                   />
                 )}

@@ -16,6 +16,7 @@ import {
 import { ErrorState } from '@/components/ui/error-state'
 import { toast } from '@/components/ui/toast'
 import { JobPostingDialog } from '@/features/people/recruitment/JobPostingDialog'
+import { isPastClosingDate } from '@/services/careers'
 import { jobPostingStatusLabel, jobPostingStatusVariant, jobEmploymentTypeLabel } from '@/lib/jobPostingLabels'
 import {
   closeJobPosting,
@@ -130,7 +131,17 @@ export function JobPostingsPage() {
                 variant="secondary"
                 size="sm"
                 disabled={publish.isPending}
-                onClick={() => publish.mutate(posting.id)}
+                onClick={() => {
+                  // A draft can carry a closing date that has since passed —
+                  // the calendar only guarded the value at entry time.
+                  // Publishing it would put an already-expired posting live, so
+                  // block it here and point HR back to the edit form.
+                  if (isPastClosingDate(posting.closingDate)) {
+                    toast.error('This closing date has passed. Edit the posting before publishing.')
+                    return
+                  }
+                  publish.mutate(posting.id)
+                }}
               >
                 <Send aria-hidden="true" />
                 Publish
