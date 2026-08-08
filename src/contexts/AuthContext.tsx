@@ -112,9 +112,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     await supabase.auth.signOut()
     setSession(null)
     setProfile(null)
-    // Removed, not invalidated: an invalidated query refetches, and the next
-    // person to sign in on this machine must not see the last person's menu.
-    queryClient.removeQueries({ queryKey: authorizationQueryKey })
+    // Clear the whole cache, not just authorization: leave, employees, job
+    // postings and every other protected query hold the signed-out user's
+    // RLS-scoped rows, and the next person to sign in on this machine must not
+    // see them. clear() removes without refetching, so nothing reloads under
+    // the old session.
+    queryClient.clear()
   }, [queryClient])
 
   const value = React.useMemo<AuthContextValue>(

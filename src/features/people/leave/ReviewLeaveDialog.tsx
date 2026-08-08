@@ -72,6 +72,27 @@ export function ReviewLeaveDialog({
           </DialogDescription>
         </DialogHeader>
 
+        {(request.reason || request.supportingDocumentUrl) && (
+          <div className="grid gap-2 rounded-md border border-border bg-muted p-3 text-sm">
+            {request.reason && (
+              <div className="grid gap-1">
+                <span className="text-xs font-medium text-muted-foreground">Employee&rsquo;s reason</span>
+                <p className="whitespace-pre-wrap text-body">{request.reason}</p>
+              </div>
+            )}
+            {request.supportingDocumentUrl && (
+              <a
+                href={request.supportingDocumentUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="text-primary underline underline-offset-2 hover:no-underline"
+              >
+                View supporting document
+              </a>
+            )}
+          </div>
+        )}
+
         {approving ? (
           <p className="text-sm text-body">
             Approving records you as the reviewer and marks the request approved.

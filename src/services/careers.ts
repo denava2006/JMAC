@@ -3,10 +3,12 @@ import { supabase } from '@/lib/supabase'
 /**
  * Public job postings for the careers section.
  *
- * Anything this can read is already open — the `anon_view_open_postings`
- * policy restricts anonymous select to `status = 'open'`, so there is no
- * client-side status filter here and adding one would be a second, weaker
- * copy of the rule.
+ * The `anon_view_open_postings` policy restricts *anonymous* select to
+ * `status = 'open'`, but `job_postings_select_staff` grants active staff read
+ * on every status, and RLS policies are OR'd. So a signed-in staff member
+ * hitting this page through the session client would otherwise see drafts and
+ * closed postings — the `status = 'open'` filter below is what actually scopes
+ * the careers list for them.
  *
  * Shape follows HRMS's usePublicCareers.ts. Note `job_postings` has no
  * `title` column: the title comes from `positions.title` through the join.
@@ -60,6 +62,7 @@ export async function fetchOpenPositions(): Promise<PublicJobPosting[]> {
   const { data, error } = await supabase
     .from('job_postings')
     .select(SELECT)
+    .eq('status', 'open')
     .order('date_posted', { ascending: false, nullsFirst: false })
 
   if (error) throw new Error(error.message)
@@ -67,7 +70,12 @@ export async function fetchOpenPositions(): Promise<PublicJobPosting[]> {
 }
 
 export async function fetchOpenPosition(id: string): Promise<PublicJobPosting | null> {
-  const { data, error } = await supabase.from('job_postings').select(SELECT).eq('id', id).maybeSingle()
+  const { data, error } = await supabase
+    .from('job_postings')
+    .select(SELECT)
+    .eq('id', id)
+    .eq('status', 'open')
+    .maybeSingle()
   if (error) throw new Error(error.message)
   return data ? toPosting(data as unknown as PostingRow) : null
 }

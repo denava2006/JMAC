@@ -107,9 +107,18 @@ export interface JobPostingInput {
   closingDate: string | null
 }
 
+async function currentUserId(): Promise<string> {
+  const { data } = await supabase.auth.getUser()
+  const id = data.user?.id
+  if (!id) throw new Error('Your session has expired. Sign in again to post a job.')
+  return id
+}
+
 export async function createJobPosting(input: JobPostingInput): Promise<void> {
   // Created as a draft: a posting is not public until HR explicitly publishes
-  // it, so a half-written one never leaks to /careers.
+  // it, so a half-written one never leaks to /careers. posted_by records the
+  // author — its database default is null, so it must be set here or the
+  // posting loses who created it.
   const { error } = await supabase.from('job_postings').insert({
     position_id: input.positionId,
     department_id: input.departmentId,
@@ -119,6 +128,7 @@ export async function createJobPosting(input: JobPostingInput): Promise<void> {
     vacancies: input.vacancies,
     closing_date: input.closingDate,
     status: 'draft',
+    posted_by: await currentUserId(),
   })
   if (error) throw new Error(error.message)
 }

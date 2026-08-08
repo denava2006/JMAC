@@ -105,6 +105,12 @@ function toListRow(row: JoinedRow): EmployeeListRow {
 }
 
 export async function fetchEmployees(): Promise<EmployeeListRow[]> {
+  // employment_status = 'on_leave' is date-derived, but nothing fires when an
+  // approved leave's end date simply passes. Reconcile first so an employee is
+  // not shown "On leave" indefinitely. The RPC is a SECURITY DEFINER recompute
+  // and idempotent; a stale row is worse than the extra call.
+  await supabase.rpc('sync_employment_statuses')
+
   const { data, error } = await supabase
     .from('employees')
     .select(LIST_SELECT)

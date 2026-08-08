@@ -15,3 +15,7 @@ screenshots/
 /blob-report/
 /playwright/.cache/
 /playwright/.auth/
+
+# AI temporary working files
+AI_HANDOFF.md
+CODEX_FINDINGS.md
