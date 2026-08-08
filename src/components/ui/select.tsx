@@ -84,7 +84,12 @@ export function SelectContent({
       <SelectPrimitive.Content
         position={position}
         className={cn(
-          'relative z-dropdown max-h-96 min-w-32 overflow-hidden rounded-md border border-border',
+          // z-popover, above the modal layer, not z-dropdown below it: a Select
+          // is routinely opened from inside a Dialog (a "file leave" form), and
+          // at z-dropdown its options render behind the dialog overlay and
+          // cannot be clicked. Every transient float that a modal can spawn
+          // sits above the modal.
+          'relative z-popover max-h-96 min-w-32 overflow-hidden rounded-md border border-border',
           'bg-surface text-heading shadow-md',
           position === 'popper' && 'data-[side=bottom]:translate-y-1 data-[side=top]:-translate-y-1',
           className

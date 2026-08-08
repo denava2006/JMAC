@@ -23,6 +23,9 @@ const DashboardPage = lazy(() =>
 const EmployeesPage = lazy(() =>
   import('@/features/people/EmployeesPage').then((m) => ({ default: m.EmployeesPage }))
 )
+const LeavePage = lazy(() =>
+  import('@/features/people/LeavePage').then((m) => ({ default: m.LeavePage }))
+)
 const ComponentGallery = lazy(() => import('@/app/ComponentGallery'))
 const LandingPage = lazy(() =>
   import('@/features/landing/LandingPage').then((m) => ({ default: m.LandingPage }))
@@ -134,6 +137,16 @@ export function AppRoutes() {
             <RequirePermission permission="employee.view">
               <Lazy>
                 <EmployeesPage />
+              </Lazy>
+            </RequirePermission>
+          }
+        />
+        <Route
+          path="/dashboard/leave"
+          element={
+            <RequirePermission permission="leave.view">
+              <Lazy>
+                <LeavePage />
               </Lazy>
             </RequirePermission>
           }

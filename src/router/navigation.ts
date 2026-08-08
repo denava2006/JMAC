@@ -70,7 +70,7 @@ export const NAVIGATION: NavItem[] = [
   { label: 'Deployment', icon: 'Truck', to: '/dashboard/deployment', permissions: ['deployment.view'], status: 'planned', section: 'People' },
   { label: 'Employees', icon: 'Users', to: '/dashboard/employees', permissions: ['employee.view'], status: 'ready', section: 'People' },
   { label: 'Attendance', icon: 'CalendarClock', to: '/dashboard/attendance', permissions: ['attendance.view'], status: 'planned', section: 'People' },
-  { label: 'Leave', icon: 'CalendarCheck', to: '/dashboard/leave', permissions: ['leave.view'], status: 'planned', section: 'People' },
+  { label: 'Leave', icon: 'CalendarCheck', to: '/dashboard/leave', permissions: ['leave.view'], status: 'ready', section: 'People' },
   { label: 'Payroll', icon: 'Wallet', to: '/dashboard/payroll', permissions: ['payroll.review'], status: 'planned', section: 'People' },
 
   // ---- Sales --------------------------------------------------------------

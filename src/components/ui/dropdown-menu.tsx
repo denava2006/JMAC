@@ -30,7 +30,10 @@ export function DropdownMenuContent({
       <DropdownMenuPrimitive.Content
         sideOffset={sideOffset}
         className={cn(
-          'z-dropdown min-w-40 overflow-hidden rounded-md border border-border',
+          // z-popover, above the modal layer: a dropdown menu can be opened
+          // from inside a Dialog, and below the modal its items would be
+          // hidden behind the overlay. See select.tsx for the same reasoning.
+          'z-popover min-w-40 overflow-hidden rounded-md border border-border',
           'bg-surface p-1 shadow-md',
           'data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95',
           'data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95',
