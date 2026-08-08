@@ -4,7 +4,7 @@ import { Loader } from '@/components/ui/loader'
 import { AppLayout } from '@/layouts/AppLayout'
 import { AuthLayout } from '@/layouts/AuthLayout'
 import { PublicLayout } from '@/layouts/PublicLayout'
-import { AnonymousOnly, ProtectedRoute } from '@/router/guards'
+import { AnonymousOnly, ProtectedRoute, RequirePermission } from '@/router/guards'
 
 // Route-level code splitting: nobody signing in should download the dashboard,
 // and nobody on the dashboard should download the reset-password form.
@@ -19,6 +19,9 @@ const ResetPasswordPage = lazy(() =>
 )
 const DashboardPage = lazy(() =>
   import('@/features/dashboard/DashboardPage').then((m) => ({ default: m.DashboardPage }))
+)
+const EmployeesPage = lazy(() =>
+  import('@/features/people/EmployeesPage').then((m) => ({ default: m.EmployeesPage }))
 )
 const ComponentGallery = lazy(() => import('@/app/ComponentGallery'))
 const LandingPage = lazy(() =>
@@ -123,6 +126,16 @@ export function AppRoutes() {
             <Lazy>
               <DashboardPage />
             </Lazy>
+          }
+        />
+        <Route
+          path="/dashboard/employees"
+          element={
+            <RequirePermission permission="employee.view">
+              <Lazy>
+                <EmployeesPage />
+              </Lazy>
+            </RequirePermission>
           }
         />
       </Route>

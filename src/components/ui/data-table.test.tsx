@@ -99,4 +99,34 @@ describe('DataTable', () => {
     render(<DataTable columns={columns} data={data} />)
     expect(screen.queryByRole('textbox')).not.toBeInTheDocument()
   })
+
+  describe('onRowClick', () => {
+    it('reports the clicked row', async () => {
+      const onRowClick = vi.fn()
+      render(<DataTable columns={columns} data={data} onRowClick={onRowClick} />)
+      await userEvent.click(screen.getByText('Ana Cruz'))
+      expect(onRowClick).toHaveBeenCalledWith(data[1])
+    })
+
+    // A clickable row must be reachable without a mouse, or the detail sheet is
+    // unavailable to keyboard users. The row stays a table row — it is
+    // focusable via tabIndex, not re-roled as a button.
+    it('activates a row from the keyboard', async () => {
+      const onRowClick = vi.fn()
+      render(<DataTable columns={columns} data={data} onRowClick={onRowClick} />)
+      const [, firstBodyRow] = screen.getAllByRole('row') // [0] is the header
+      firstBodyRow?.focus()
+      expect(firstBodyRow).toHaveFocus()
+      await userEvent.keyboard('{Enter}')
+      expect(onRowClick).toHaveBeenCalledWith(data[0])
+      await userEvent.keyboard(' ')
+      expect(onRowClick).toHaveBeenCalledTimes(2)
+    })
+
+    it('leaves rows non-focusable when no handler is given', () => {
+      render(<DataTable columns={columns} data={data} />)
+      const [, firstBodyRow] = screen.getAllByRole('row')
+      expect(firstBodyRow).not.toHaveAttribute('tabindex')
+    })
+  })
 })

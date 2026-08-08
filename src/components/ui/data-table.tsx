@@ -47,6 +47,10 @@ export interface DataTableProps<TData, TValue> {
   /** Rendered to the right of the search box — an "Add employee" button, an
    *  export control, a status filter. */
   toolbar?: ReactNode
+  /** Makes each row activatable. When set, a row is a button in all but name:
+   *  it takes focus, responds to Enter and Space, and shows a pointer. Leave
+   *  it off for a read-only table so rows are not falsely interactive. */
+  onRowClick?: (row: TData) => void
   className?: string
 }
 
@@ -62,6 +66,7 @@ export function DataTable<TData, TValue>({
   emptyTitle = 'Nothing to show',
   emptyDescription,
   toolbar,
+  onRowClick,
   className,
 }: DataTableProps<TData, TValue>) {
   const [sorting, setSorting] = useState<SortingState>([])
@@ -189,15 +194,40 @@ export function DataTable<TData, TValue>({
                 </TableRow>
               ))
             ) : rows.length > 0 ? (
-              rows.map((row) => (
-                <TableRow key={row.id}>
-                  {row.getVisibleCells().map((cell) => (
-                    <TableCell key={cell.id}>
-                      {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                    </TableCell>
-                  ))}
-                </TableRow>
-              ))
+              rows.map((row) => {
+                const interactive = Boolean(onRowClick)
+                return (
+                  <TableRow
+                    key={row.id}
+                    // Focusable and Enter/Space-activatable, but kept as a table
+                    // row rather than given role="button": overriding the role
+                    // would strip it from the grid a screen reader navigates,
+                    // trading a worse experience for a nominal one.
+                    tabIndex={interactive ? 0 : undefined}
+                    onClick={interactive ? () => onRowClick?.(row.original) : undefined}
+                    onKeyDown={
+                      interactive
+                        ? (event) => {
+                            if (event.key === 'Enter' || event.key === ' ') {
+                              event.preventDefault()
+                              onRowClick?.(row.original)
+                            }
+                          }
+                        : undefined
+                    }
+                    className={cn(
+                      interactive &&
+                        'cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring'
+                    )}
+                  >
+                    {row.getVisibleCells().map((cell) => (
+                      <TableCell key={cell.id}>
+                        {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                      </TableCell>
+                    ))}
+                  </TableRow>
+                )
+              })
             ) : (
               <TableRow className="hover:bg-transparent">
                 <TableCell colSpan={table.getVisibleLeafColumns().length} className="p-0">
