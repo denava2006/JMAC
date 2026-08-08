@@ -55,7 +55,7 @@ export const NAVIGATION: NavItem[] = [
     icon: 'Briefcase',
     to: '/dashboard/job-postings',
     roles: ['hr_staff', ...ELEVATED],
-    status: 'planned',
+    status: 'ready',
     section: 'People',
   },
   {

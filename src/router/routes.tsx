@@ -26,6 +26,9 @@ const EmployeesPage = lazy(() =>
 const LeavePage = lazy(() =>
   import('@/features/people/LeavePage').then((m) => ({ default: m.LeavePage }))
 )
+const JobPostingsPage = lazy(() =>
+  import('@/features/people/JobPostingsPage').then((m) => ({ default: m.JobPostingsPage }))
+)
 const ComponentGallery = lazy(() => import('@/app/ComponentGallery'))
 const LandingPage = lazy(() =>
   import('@/features/landing/LandingPage').then((m) => ({ default: m.LandingPage }))
@@ -147,6 +150,21 @@ export function AppRoutes() {
             <RequirePermission permission="leave.view">
               <Lazy>
                 <LeavePage />
+              </Lazy>
+            </RequirePermission>
+          }
+        />
+        {/* The sidebar shows Job Posting to HR Staff (HR Manager gets
+            Recruitment instead), but the route gate is the permission RLS
+            actually enforces — recruitment.manage, held by both HR roles and
+            admin. Anyone who genuinely cannot post is refused; the nav split
+            is the editorial choice about whose primary workflow this is. */}
+        <Route
+          path="/dashboard/job-postings"
+          element={
+            <RequirePermission permission="recruitment.manage">
+              <Lazy>
+                <JobPostingsPage />
               </Lazy>
             </RequirePermission>
           }
