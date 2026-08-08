@@ -8,6 +8,7 @@ const NAV = [
   { label: 'Platform', href: '/#platform' },
   { label: 'Modules', href: '/#modules' },
   { label: 'Careers', href: '/careers' },
+  { label: 'Track application', href: '/careers/track' },
   { label: 'Contact', href: '/#contact' },
 ]
 

@@ -812,10 +812,7 @@ Before reporting a task as complete:
 - Do not implement FMS unless explicitly requested.
 - Verify review findings before fixing them.
 - Run relevant tests before declaring work complete.
-
-
 ### Context / Token Limit Rule
-
 When the active AI agent reaches approximately 90% context or usage:
 
 1. Stop starting new implementation work immediately.

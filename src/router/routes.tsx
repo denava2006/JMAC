@@ -29,6 +29,9 @@ const LeavePage = lazy(() =>
 const JobPostingsPage = lazy(() =>
   import('@/features/people/JobPostingsPage').then((m) => ({ default: m.JobPostingsPage }))
 )
+const RecruitmentPage = lazy(() =>
+  import('@/features/people/RecruitmentPage').then((m) => ({ default: m.RecruitmentPage }))
+)
 const ComponentGallery = lazy(() => import('@/app/ComponentGallery'))
 const LandingPage = lazy(() =>
   import('@/features/landing/LandingPage').then((m) => ({ default: m.LandingPage }))
@@ -38,6 +41,15 @@ const CareersPage = lazy(() =>
 )
 const CareerDetailPage = lazy(() =>
   import('@/features/careers/CareersPage').then((m) => ({ default: m.CareerDetailPage }))
+)
+const ApplyPage = lazy(() =>
+  import('@/features/careers/ApplyPage').then((m) => ({ default: m.ApplyPage }))
+)
+const ApplicationSuccessPage = lazy(() =>
+  import('@/features/careers/ApplicationSuccessPage').then((m) => ({ default: m.ApplicationSuccessPage }))
+)
+const TrackApplicationPage = lazy(() =>
+  import('@/features/careers/TrackApplicationPage').then((m) => ({ default: m.TrackApplicationPage }))
 )
 
 function Loading() {
@@ -75,11 +87,37 @@ export function AppRoutes() {
             </Lazy>
           }
         />
+        {/* Static segment: React Router ranks it above the dynamic
+            "/careers/:id" so the success page is never read as a posting id. */}
+        <Route
+          path="/careers/application-success"
+          element={
+            <Lazy>
+              <ApplicationSuccessPage />
+            </Lazy>
+          }
+        />
+        <Route
+          path="/careers/track"
+          element={
+            <Lazy>
+              <TrackApplicationPage />
+            </Lazy>
+          }
+        />
         <Route
           path="/careers/:id"
           element={
             <Lazy>
               <CareerDetailPage />
+            </Lazy>
+          }
+        />
+        <Route
+          path="/careers/:id/apply"
+          element={
+            <Lazy>
+              <ApplyPage />
             </Lazy>
           }
         />
@@ -165,6 +203,16 @@ export function AppRoutes() {
             <RequirePermission permission="recruitment.manage">
               <Lazy>
                 <JobPostingsPage />
+              </Lazy>
+            </RequirePermission>
+          }
+        />
+        <Route
+          path="/dashboard/recruitment"
+          element={
+            <RequirePermission permission="applicant.screen">
+              <Lazy>
+                <RecruitmentPage />
               </Lazy>
             </RequirePermission>
           }

@@ -26,6 +26,12 @@ export function CareersPage() {
         Every role below is live from our recruitment system. Applications open and close
         here, not in a separate inbox.
       </p>
+      <Link
+        to="/careers/track"
+        className="mt-4 inline-block text-sm font-medium text-primary underline underline-offset-2 hover:no-underline"
+      >
+        Already applied? Track your application
+      </Link>
       <div className="mt-10">
         <OpenPositions />
       </div>
@@ -112,12 +118,16 @@ export function CareerDetailPage() {
             </section>
           ) : null}
 
-          {/* Applications land in Phase 3 with the applicant portal. Saying so
-              beats a button that does nothing. */}
-          <p className="rounded-md border border-border bg-muted px-4 py-3 text-sm text-body">
-            Online applications open shortly. In the meantime, contact our HR team about
-            this role.
-          </p>
+          {accepting ? (
+            <Button asChild size="lg" className="self-start">
+              <Link to={`/careers/${data.id}/apply`}>Apply for this role</Link>
+            </Button>
+          ) : (
+            <p className="rounded-md border border-border bg-muted px-4 py-3 text-sm text-body">
+              This role is no longer accepting applications. Browse our current openings on the
+              careers page.
+            </p>
+          )}
         </CardContent>
       </Card>
 

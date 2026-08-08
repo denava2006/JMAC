@@ -70,7 +70,7 @@ export const NAVIGATION: NavItem[] = [
     icon: 'ClipboardList',
     to: '/dashboard/recruitment',
     permissions: ['applicant.screen'],
-    status: 'planned',
+    status: 'ready',
     section: 'People',
   },
   { label: 'Interviews', icon: 'CalendarSearch', to: '/dashboard/interviews', permissions: ['interview.manage'], status: 'planned', section: 'People' },
