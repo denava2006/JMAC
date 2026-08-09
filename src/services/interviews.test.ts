@@ -8,8 +8,10 @@ vi.mock('@/lib/supabase', () => ({
 
 import {
   fetchFinalInterviewers,
+  fetchInterviewLocations,
   fetchInterviewQueue,
   fetchInterviewStats,
+  isMeetingUrl,
   scheduleInterview,
   scopeInterviewQueue,
   submitFinalEvaluation,
@@ -205,6 +207,52 @@ describe('fetchFinalInterviewers', () => {
   it('surfaces an authorization failure from the RPC', async () => {
     rpc.mockResolvedValue({ data: null, error: { message: 'You are not authorized to view interviewers.' } })
     await expect(fetchFinalInterviewers()).rejects.toThrow(/not authorized/i)
+  })
+})
+
+describe('fetchInterviewLocations', () => {
+  it('composes branch and location labels and keeps a branch-less fallback', async () => {
+    const query = listChain({
+      data: [
+        { name: 'Counter 2', is_active: true, branches: { name: 'Cebu Main' } },
+        { name: 'Remote Annex', is_active: true, branches: null },
+        { name: 'Interview Room', is_active: true, branches: { name: 'Bacolod' } },
+      ],
+      error: null,
+    })
+    from.mockReturnValue(query)
+
+    await expect(fetchInterviewLocations()).resolves.toEqual([
+      { label: 'Bacolod · Interview Room' },
+      { label: 'Cebu Main · Counter 2' },
+      { label: 'Remote Annex' },
+    ])
+    expect(query.eq).toHaveBeenCalledWith('is_active', true)
+  })
+
+  it('surfaces a location lookup failure', async () => {
+    from.mockReturnValue(listChain({ data: null, error: { message: 'locations unavailable' } }))
+    await expect(fetchInterviewLocations()).rejects.toThrow('locations unavailable')
+  })
+})
+
+describe('isMeetingUrl', () => {
+  it.each([
+    'https://meet.google.com/abc-defg',
+    '  https://teams.microsoft.com/l/meetup-join/123  ',
+  ])('accepts a joinable HTTPS URL: %s', (value) => {
+    expect(isMeetingUrl(value)).toBe(true)
+  })
+
+  it.each([
+    'http://meet.google.com/abc-defg',
+    'https://localhost/meeting',
+    'meet.google.com/abc-defg',
+    'Google Meet',
+    'https://.com/meeting',
+    'https://foo./meeting',
+  ])('rejects an unsafe or non-public meeting URL: %s', (value) => {
+    expect(isMeetingUrl(value)).toBe(false)
   })
 })
 

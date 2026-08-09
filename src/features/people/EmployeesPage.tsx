@@ -5,6 +5,7 @@ import { Breadcrumb } from '@/components/ui/breadcrumb'
 import { DataTable, type ColumnDef } from '@/components/ui/data-table'
 import { ErrorState } from '@/components/ui/error-state'
 import { EmployeeDetailSheet } from '@/features/people/EmployeeDetailSheet'
+import { PendingEmployees } from '@/features/people/PendingEmployees'
 import {
   employmentStatusLabel,
   employmentStatusVariant,
@@ -69,6 +70,10 @@ export function EmployeesPage() {
           Everyone on the books. Select a row to see the full record.
         </p>
       </div>
+
+      {/* Deployed applicants still waiting to become employee records. Renders
+          nothing when there are none. */}
+      <PendingEmployees />
 
       {isError ? (
         <ErrorState

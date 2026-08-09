@@ -216,6 +216,35 @@ export async function fetchFinalInterviewers(): Promise<FinalInterviewer[]> {
   }))
 }
 
+export interface InterviewLocationOption {
+  /** Stored on interviews.location, which is text — there is no location_id. */
+  label: string
+}
+
+const MEETING_HOSTNAME_PATTERN = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/i
+
+/**
+ * Real branch/work-location pairs, labelled "Branch · Location".
+ *
+ * `interviews.location` is free text, but the places an interview can actually
+ * happen are already in the database, so offering the list beats letting
+ * someone type a room name that means nothing to the applicant. Both tables are
+ * staff-readable (`branches_read`, `work_locations_staff_select`), so this
+ * needs no policy change.
+ */
+export async function fetchInterviewLocations(): Promise<InterviewLocationOption[]> {
+  const { data, error } = await supabase
+    .from('work_locations')
+    .select('name, is_active, branches (name)')
+    .eq('is_active', true)
+    .order('name')
+  if (error) throw new Error(error.message)
+  const rows = (data ?? []) as unknown as { name: string; branches: { name: string } | null }[]
+  return rows
+    .map((row) => ({ label: row.branches?.name ? `${row.branches.name} · ${row.name}` : row.name }))
+    .sort((a, b) => a.label.localeCompare(b.label))
+}
+
 async function interviewerId(): Promise<string> {
   const { data, error } = await supabase.auth.getUser()
   if (error) throw new Error(error.message)
@@ -228,10 +257,19 @@ function trimmed(value: string | undefined): string | null {
   return value?.trim() || null
 }
 
-function isHttpUrl(value: string): boolean {
+/**
+ * A meeting link has to be something the applicant can actually join: an https
+ * URL with a real host. Plain text ("Google Meet"), an http link, or a
+ * hostless value like `https://localhost` would all be sent to the applicant
+ * as their only way into the interview.
+ */
+export function isMeetingUrl(value: string): boolean {
+  const normalized = value.trim()
+  if (!normalized || /\s/.test(normalized)) return false
+
   try {
-    const url = new URL(value)
-    return url.protocol === 'http:' || url.protocol === 'https:'
+    const url = new URL(normalized)
+    return url.protocol === 'https:' && MEETING_HOSTNAME_PATTERN.test(url.hostname)
   } catch {
     return false
   }
@@ -269,11 +307,11 @@ export async function scheduleInterview(input: ScheduleInterviewInput): Promise<
 
   const meetingLink = trimmed(input.meetingLink)
   const location = trimmed(input.location)
-  if (input.mode === 'online' && (!meetingLink || !isHttpUrl(meetingLink))) {
-    throw new Error('Enter a valid http or https meeting link.')
+  if (input.mode === 'online' && (!meetingLink || !isMeetingUrl(meetingLink))) {
+    throw new Error('Enter a valid https meeting link, for example https://meet.google.com/abc-defg.')
   }
   if (input.mode === 'face_to_face' && !location) {
-    throw new Error('Enter the face-to-face interview location.')
+    throw new Error('Choose the branch and work location for this interview.')
   }
 
   const me = await interviewerId()

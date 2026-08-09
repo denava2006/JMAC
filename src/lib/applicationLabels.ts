@@ -46,6 +46,39 @@ export function applicationStatusVariant(status: string): BadgeProps['variant'] 
   return APPLICATION_STATUS_VARIANT[status as ApplicationStatus] ?? 'neutral'
 }
 
+export type OfferStatus = 'pending' | 'accepted' | 'declined'
+
+export const OFFER_STATUS_LABEL: Record<OfferStatus, string> = {
+  pending: 'Awaiting response',
+  accepted: 'Accepted',
+  declined: 'Declined',
+}
+
+export const OFFER_STATUS_VARIANT: Record<OfferStatus, BadgeProps['variant']> = {
+  pending: 'warning',
+  accepted: 'success',
+  declined: 'error',
+}
+
+export const OFFER_DECLINE_REASONS = [
+  'Accepted another job offer',
+  'Salary expectation',
+  'Personal reason',
+  'Location',
+  'Schedule conflict',
+  'Other',
+] as const
+
+export type OfferDeclineReason = (typeof OFFER_DECLINE_REASONS)[number]
+
+export function offerStatusLabel(status: string): string {
+  return OFFER_STATUS_LABEL[status as OfferStatus] ?? status
+}
+
+export function offerStatusVariant(status: string): BadgeProps['variant'] {
+  return OFFER_STATUS_VARIANT[status as OfferStatus] ?? 'neutral'
+}
+
 /** Plain-language status for the applicant's own tracking page. The internal
  *  labels above are written for HR and leak process detail an applicant should
  *  not read (e.g. "New"). Ported from the HRMS applicant portal. */
@@ -68,7 +101,7 @@ export const APPLICANT_STATUS_COPY: Record<ApplicationStatus, { label: string; d
   },
   offered: {
     label: 'Job offer',
-    detail: 'Congratulations — you’ve received a job offer. Our HR team will be in touch with the details.',
+    detail: 'Congratulations — you’ve received a job offer. Review the terms below and record your response.',
   },
   hired: {
     label: 'Offer stage',

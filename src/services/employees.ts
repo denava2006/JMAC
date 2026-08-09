@@ -151,3 +151,107 @@ export async function fetchEmployee(id: string): Promise<EmployeeDetail | null> 
 
 export const employeesQueryKey = ['people', 'employees'] as const
 export const employeeQueryKey = (id: string) => ['people', 'employees', id] as const
+
+/**
+ * Applicants who have been deployed but do not yet have an employee record.
+ *
+ * `employees.application_id` is the link, and migration 0005 makes it unique, so
+ * "pending" is simply a deployed application with no employee pointing at it.
+ */
+export interface PendingEmployee {
+  applicationId: string
+  applicantName: string
+  email: string
+  positionTitle: string
+  department: string | null
+  deploymentDate: string | null
+}
+
+interface PendingRow {
+  id: string
+  applicants: {
+    first_name: string
+    middle_name: string | null
+    last_name: string
+    email: string
+  } | null
+  job_postings: {
+    positions: { title: string } | null
+    departments: { name: string } | null
+  } | null
+  deployment_records: { deployment_date: string } | { deployment_date: string }[] | null
+  employees: { id: string }[] | { id: string } | null
+  job_offers: { status: string }[] | null
+}
+
+function firstOrNull<T>(value: T | T[] | null | undefined): T | null {
+  if (!value) return null
+  return Array.isArray(value) ? value[0] ?? null : value
+}
+
+export async function fetchPendingEmployees(): Promise<PendingEmployee[]> {
+  const { data, error } = await supabase
+    .from('applications')
+    .select(
+      `id,
+       applicants (first_name, middle_name, last_name, email),
+       job_postings (positions (title), departments (name)),
+       deployment_records (deployment_date),
+       employees (id),
+       job_offers (status)`
+    )
+    .eq('status', 'deployed')
+    .order('created_at', { ascending: false })
+  if (error) throw new Error(error.message)
+
+  return (data as unknown as PendingRow[])
+    .filter((row) => firstOrNull(row.employees) === null)
+    // Legacy applications deployed before offers existed have no accepted offer
+    // for the record to be built from, so the RPC can never serve them. Listing
+    // them as "pending" would promise an action that always fails.
+    .filter((row) => (row.job_offers ?? []).some((offer) => offer.status === 'accepted'))
+    .map((row) => {
+      const a = row.applicants
+      const name = [a?.first_name, a?.middle_name, a?.last_name].filter(Boolean).join(' ')
+      return {
+        applicationId: row.id,
+        applicantName: name || 'Unknown applicant',
+        email: a?.email ?? '—',
+        positionTitle: row.job_postings?.positions?.title ?? 'Untitled position',
+        department: row.job_postings?.departments?.name ?? null,
+        deploymentDate: firstOrNull(row.deployment_records)?.deployment_date ?? null,
+      }
+    })
+}
+
+const CREATE_EMPLOYEE_ERRORS: [string, string][] = [
+  ['EMPLOYEE_NOT_AUTHORIZED', 'You are not allowed to create employee records.'],
+  ['EMPLOYEE_APPLICATION_REQUIRED', 'This application is no longer available.'],
+  ['EMPLOYEE_APPLICATION_NOT_FOUND', 'This application no longer exists.'],
+  ['EMPLOYEE_NOT_DEPLOYED', 'Complete the deployment before creating the employee record.'],
+  ['EMPLOYEE_OFFER_NOT_FOUND', 'This application has no accepted job offer to copy from.'],
+]
+
+/**
+ * Creates the employee from the application's own evidence — applicant details,
+ * the accepted offer, and the deployment. Idempotent: if a record already exists
+ * for this application the RPC returns it rather than creating a second person.
+ *
+ * Note this does not create a POS account. User, role and store membership stay
+ * a separate, deliberate step.
+ */
+export async function createEmployeeFromApplication(applicationId: string): Promise<string> {
+  if (!applicationId.trim()) throw new Error('This application is no longer available.')
+
+  const { data, error } = await supabase.rpc('create_employee_from_application', {
+    p_application_id: applicationId,
+  })
+  if (error) {
+    const match = CREATE_EMPLOYEE_ERRORS.find(([code]) => error.message.includes(code))
+    throw new Error(match?.[1] ?? 'Could not create the employee record. Please try again.')
+  }
+  if (!data) throw new Error('The employee record was created, but its reference could not be read.')
+  return data as string
+}
+
+export const pendingEmployeesQueryKey = ['people', 'pending-employees'] as const

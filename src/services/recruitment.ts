@@ -1,4 +1,6 @@
 import { supabase } from '@/lib/supabase'
+import type { JobEmploymentType } from '@/lib/jobPostingLabels'
+import type { Enums } from '@/types/database.types'
 
 /**
  * Recruitment screening — the HR side of the applicant pipeline.
@@ -24,6 +26,8 @@ export interface ApplicationRow {
   coverLetter: string | null
   positionTitle: string
   department: string | null
+  employmentType: JobEmploymentType | null
+  latestOfferStatus: Enums<'offer_status'> | null
   status: string
   rejectionReason: string | null
   reviewedAt: string | null
@@ -33,7 +37,8 @@ export interface ApplicationRow {
 const SELECT = `
   id, status, rejection_reason, reviewed_at, created_at, applicant_id,
   applicants (first_name, middle_name, last_name, email, phone, address, province, city, barangay, resume_url, cover_letter),
-  job_postings (positions (title), departments (name))
+  job_postings (employment_type, positions (title), departments (name)),
+  job_offers (id, status, created_at)
 `
 
 interface JoinedRow {
@@ -57,14 +62,23 @@ interface JoinedRow {
     cover_letter: string | null
   } | null
   job_postings: {
+    employment_type: JobEmploymentType
     positions: { title: string } | null
     departments: { name: string } | null
   } | null
+  job_offers: Array<{
+    id: string
+    status: Enums<'offer_status'>
+    created_at: string
+  }> | null
 }
 
 function toRow(row: JoinedRow): ApplicationRow {
   const a = row.applicants
   const name = [a?.first_name, a?.middle_name, a?.last_name].filter(Boolean).join(' ')
+  const latestOffer = [...(row.job_offers ?? [])].sort((left, right) =>
+    right.created_at.localeCompare(left.created_at) || right.id.localeCompare(left.id)
+  )[0]
   return {
     id: row.id,
     applicantId: row.applicant_id,
@@ -79,6 +93,8 @@ function toRow(row: JoinedRow): ApplicationRow {
     coverLetter: a?.cover_letter ?? null,
     positionTitle: row.job_postings?.positions?.title ?? 'Untitled position',
     department: row.job_postings?.departments?.name ?? null,
+    employmentType: row.job_postings?.employment_type ?? null,
+    latestOfferStatus: latestOffer?.status ?? null,
     status: row.status,
     rejectionReason: row.rejection_reason,
     reviewedAt: row.reviewed_at,
@@ -93,6 +109,17 @@ export async function fetchApplications(): Promise<ApplicationRow[]> {
     .order('created_at', { ascending: false })
   if (error) throw new Error(error.message)
   return (data as unknown as JoinedRow[]).map(toRow)
+}
+
+export async function fetchApplication(id: string): Promise<ApplicationRow> {
+  const { data, error } = await supabase
+    .from('applications')
+    .select(SELECT)
+    .eq('id', id)
+    .maybeSingle()
+  if (error) throw new Error(error.message)
+  if (!data) throw new Error('This application is no longer available.')
+  return toRow(data as unknown as JoinedRow)
 }
 
 export interface ApplicationStats {

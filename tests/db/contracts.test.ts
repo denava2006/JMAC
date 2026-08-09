@@ -149,3 +149,124 @@ describe('recruitment hardening contract (migration 0001)', () => {
     expect(error).toBeNull()
   })
 })
+
+describe('atomic job offer contract (migration 0002)', () => {
+  it('denies prepare_job_offer to an anonymous caller at the function ACL', async () => {
+    const { data, error } = await anon().rpc('prepare_job_offer', {
+      p_application_id: '00000000-0000-0000-0000-000000000001',
+      p_proposed_salary: 20_000,
+      p_salary_grade_id: '00000000-0000-0000-0000-000000000002',
+      p_work_schedule_id: '00000000-0000-0000-0000-000000000003',
+      p_start_date: '2099-01-01',
+    })
+    expect(data).toBeNull()
+    expect(error?.code).toBe('42501')
+    expect(error?.message).toContain('permission denied for function prepare_job_offer')
+  })
+
+  it('keeps direct anonymous job-offer table reads closed', async () => {
+    const { data, error } = await anon().from('job_offers').select('id').limit(1)
+    expect(data).toBeNull()
+    expect(error?.code).toBe('42501')
+  })
+
+  it('validates an applicant response before looking up credentials', async () => {
+    const { data, error } = await anon().rpc('respond_to_job_offer', {
+      p_reference_code: 'APP-DOES-NOT-EXIST',
+      p_email: 'nobody@example.com',
+      p_decision: 'maybe',
+    })
+    expect(data).toBeNull()
+    expect(error?.message).toContain('INVALID_DECISION')
+  })
+
+  it('treats a null applicant decision as invalid', async () => {
+    const { data, error } = await anon().rpc('respond_to_job_offer', {
+      p_reference_code: 'APP-DOES-NOT-EXIST',
+      p_email: 'nobody@example.com',
+      // Deliberately step outside the generated client type to probe the public
+      // RPC boundary a hand-written HTTP caller can reach.
+      p_decision: null as unknown as string,
+    })
+    expect(data).toBeNull()
+    expect(error?.message).toContain('INVALID_DECISION')
+  })
+
+  it('rejects decline details on an acceptance before looking up credentials', async () => {
+    const { data, error } = await anon().rpc('respond_to_job_offer', {
+      p_reference_code: 'APP-DOES-NOT-EXIST',
+      p_email: 'nobody@example.com',
+      p_decision: 'accepted',
+      p_decline_reason: 'Other',
+    })
+    expect(data).toBeNull()
+    expect(error?.message).toContain('INVALID_DECLINE_DETAILS')
+  })
+
+  it('returns NOT_FOUND for valid response syntax and fake credentials', async () => {
+    const { data, error } = await anon().rpc('respond_to_job_offer', {
+      p_reference_code: 'APP-DOES-NOT-EXIST',
+      p_email: 'nobody@example.com',
+      p_decision: 'accepted',
+    })
+    expect(data).toBeNull()
+    expect(error?.message).toContain('NOT_FOUND')
+  })
+})
+
+describe('employment contract contract (migration 0003)', () => {
+  // Every contract write goes through a permission-scoped RPC; the table itself
+  // is SELECT-only for authenticated and invisible to anon. These assert the
+  // functions exist (not 42883) and refuse an anonymous caller.
+  it.each([
+    ['generate_employment_contract', { p_application_id: '00000000-0000-0000-0000-000000000000' }],
+    ['mark_contract_printed', { p_contract_id: '00000000-0000-0000-0000-000000000000' }],
+    ['record_contract_signing', {
+      p_contract_id: '00000000-0000-0000-0000-000000000000',
+      p_file_path: 'contracts/x.pdf',
+    }],
+  ])('refuses %s to an anonymous caller', async (fn, args) => {
+    const { error } = await anon().rpc(fn as never, args as never)
+    expect(error).not.toBeNull()
+    // 42883 would mean the function is missing rather than merely refused.
+    expect(error?.code).not.toBe('42883')
+  })
+
+  it('does not expose employment_contracts rows anonymously', async () => {
+    const { data, error } = await anon().from('employment_contracts').select('id').limit(1)
+    // RLS denies silently for anon: no rows, no error.
+    expect(error).toBeNull()
+    expect(data ?? []).toEqual([])
+  })
+})
+
+describe('deployment contract (migration 0004)', () => {
+  // Deployment is one permission-scoped RPC; the table is SELECT-only for
+  // authenticated staff and invisible to anon.
+  it('refuses deploy_applicant to an anonymous caller', async () => {
+    const { error } = await anon().rpc('deploy_applicant' as never, {
+      p_application_id: '00000000-0000-0000-0000-000000000000',
+      p_branch_id: '00000000-0000-0000-0000-000000000000',
+    } as never)
+    expect(error).not.toBeNull()
+    expect(error?.code).not.toBe('42883')
+  })
+
+  it('does not expose deployment_records rows anonymously', async () => {
+    const { data, error } = await anon().from('deployment_records').select('id').limit(1)
+    expect(error).toBeNull()
+    expect(data ?? []).toEqual([])
+  })
+})
+
+describe('employee creation contract (migration 0005)', () => {
+  // The employee record is created by a permission-scoped RPC, never by a
+  // client insert, and one application can only ever become one employee.
+  it('refuses create_employee_from_application to an anonymous caller', async () => {
+    const { error } = await anon().rpc('create_employee_from_application' as never, {
+      p_application_id: '00000000-0000-0000-0000-000000000000',
+    } as never)
+    expect(error).not.toBeNull()
+    expect(error?.code).not.toBe('42883')
+  })
+})

@@ -6,12 +6,17 @@ vi.mock('@/lib/supabase', () => ({
   supabase: { auth: { getUser }, from },
 }))
 
-import { fetchApplicationStats, qualifyApplication, rejectApplication } from '@/services/recruitment'
+import { fetchApplication, fetchApplicationStats, qualifyApplication, rejectApplication } from '@/services/recruitment'
 import {
   APPLICATION_STATUS_LABEL,
   APPLICATION_STATUS_VARIANT,
+  OFFER_DECLINE_REASONS,
+  OFFER_STATUS_LABEL,
+  OFFER_STATUS_VARIANT,
   applicationStatusLabel,
   applicationStatusVariant,
+  offerStatusLabel,
+  offerStatusVariant,
   type ApplicationStatus,
 } from '@/lib/applicationLabels'
 
@@ -98,6 +103,70 @@ describe('fetchApplicationStats', () => {
   })
 })
 
+describe('fetchApplication', () => {
+  function applicationChain(result: { data: unknown; error: { message: string } | null }) {
+    const chain = {
+      select: vi.fn(() => chain),
+      eq: vi.fn(() => chain),
+      maybeSingle: vi.fn(() => Promise.resolve(result)),
+    }
+    return chain
+  }
+
+  it('maps one application into the shared applicant detail shape', async () => {
+    const query = applicationChain({
+      data: {
+        id: 'app-1',
+        status: 'hired',
+        rejection_reason: null,
+        reviewed_at: '2026-08-09T00:00:00Z',
+        created_at: '2026-08-08T00:00:00Z',
+        applicant_id: 'applicant-1',
+        applicants: {
+          first_name: 'Ada',
+          middle_name: null,
+          last_name: 'Applicant',
+          email: 'ada@example.com',
+          phone: '09170000000',
+          address: '1 Main Street',
+          province: 'Cebu',
+          city: 'Cebu City',
+          barangay: 'Lahug',
+          resume_url: 'resumes/ada.pdf',
+          cover_letter: 'Ready to help.',
+        },
+        job_postings: {
+          employment_type: 'regular',
+          positions: { title: 'Cashier' },
+          departments: { name: 'Sales' },
+        },
+        job_offers: [
+          { id: 'offer-1', status: 'declined', created_at: '2026-08-09T00:00:00Z' },
+          { id: 'offer-2', status: 'pending', created_at: '2026-08-10T00:00:00Z' },
+        ],
+      },
+      error: null,
+    })
+    from.mockReturnValue(query)
+
+    await expect(fetchApplication('app-1')).resolves.toEqual(expect.objectContaining({
+      id: 'app-1',
+      applicantName: 'Ada Applicant',
+      resumeUrl: 'resumes/ada.pdf',
+      positionTitle: 'Cashier',
+      department: 'Sales',
+      employmentType: 'regular',
+      latestOfferStatus: 'pending',
+    }))
+    expect(query.eq).toHaveBeenCalledWith('id', 'app-1')
+  })
+
+  it('reports a missing application clearly', async () => {
+    from.mockReturnValue(applicationChain({ data: null, error: null }))
+    await expect(fetchApplication('missing')).rejects.toThrow(/no longer available/i)
+  })
+})
+
 describe('application status labels', () => {
   const statuses: ApplicationStatus[] = [
     'submitted',
@@ -122,5 +191,19 @@ describe('application status labels', () => {
   it('falls back to the raw value for an unknown status', () => {
     expect(applicationStatusLabel('mystery')).toBe('mystery')
     expect(applicationStatusVariant('mystery')).toBe('neutral')
+  })
+})
+
+describe('offer labels', () => {
+  it('labels every offer status and keeps decline reasons aligned with the database', () => {
+    expect(OFFER_STATUS_LABEL).toEqual({
+      pending: 'Awaiting response',
+      accepted: 'Accepted',
+      declined: 'Declined',
+    })
+    expect(Object.keys(OFFER_STATUS_VARIANT).sort()).toEqual(['accepted', 'declined', 'pending'])
+    expect(offerStatusLabel('pending')).toBe('Awaiting response')
+    expect(offerStatusVariant('unknown')).toBe('neutral')
+    expect(OFFER_DECLINE_REASONS).toContain('Other')
   })
 })

@@ -1,96 +1,160 @@
-# Recruitment Pipeline — Slice 4: Hire → Employee → POS
+# Recruitment Pipeline - Offer to Employee Handoff
 
 Date: 2026-08-09
-Status: Designed, not implemented
-Module: HRMS · Recruitment / Employees (People)
 
-## Context
+Status: Increment A implemented locally; Increments B-D remain fail-closed
 
-Slice 3 ends with an application at `hired`. PROJECT_CONTEXT's Employee
-Deployment workflow continues: *Hired → Employee Record → Assign Position →
-Employee automatically becomes available inside POS.* This slice closes that gap
-and is the point where recruitment finally feeds the rest of the platform.
+Module: HRMS - Recruitment / Employees (People)
 
-## Backend that already exists (verified against jmac-suite)
+## Outcome and required order
 
-- `deployment_records` — `application_id`, `deployment_date`, `branch_id`,
-  `work_location_id`, `work_schedule_id`, `reporting_manager`, `assigned_branch`,
-  `work_location`, `reporting_time`, `remarks`, `deployed_by`.
-  Triggers: `trg_deployment_schedule_compatible`, `trg_set_updated_at`.
-- `job_offers` — `application_id`, `proposed_salary`, `employment_type`,
-  `salary_grade_id`, `start_date`, `benefits`, `working_hours/days`, `status`,
-  `prepared_by`, `decline_reason/notes`. Triggers enforce employment-type
-  inheritance/compatibility.
-- `employment_contracts` — `job_offer_id`, `contract_file_url`, `status`,
-  `start_date`, `signed_at`, `signed_by`, `terms`, `company_policies`.
-- `respond_to_job_offer(reference_code, email, decision, …)` — **anon-callable**,
-  already used by the HRMS applicant portal; our Track page can surface it.
-- `employees.application_id` is the link from an application to its employee row.
-  `employees` requires only `first_name`/`last_name` as non-defaulted NOT NULLs.
-- Permissions `deployment.view` and `employee.create` are both held by
-  System Administrator, Owner, General Manager, HR Manager, HR Staff.
+Slice 3 ends with an application at `hired`. The approved continuation is now
+mandatory and must run in this order:
 
-**No new schema is required for 4a/4b.** Migration 0001's transition guard
-already permits `hired → deployed` (that edge was kept deliberately because
-offers are not implemented; remove it if 4c makes an offer mandatory).
+```text
+hired -> pending job offer -> applicant accepts -> contract generated
+      -> signed copy recorded -> deployment -> employee record
+```
 
-## How the reference models it (integration/HRMS/.../useDeployment.ts, useEmployees.ts)
+An application may not move directly from `hired` to `deployed`. Creating an
+HRMS employee record is the last outcome currently in scope; it does not by
+itself create a POS login, role, or store membership.
 
-A "pending employee" is an application with `status = 'deployed'` that has **no**
-`employees` row pointing at it (`usePendingEmployees` diffs those two sets).
-Deployment does **not** create the employee; HR creates it afterwards with
-`insert({ application_id, … })`. That two-step split is what makes the employee
-record reviewable rather than auto-generated from applicant data.
+## Increment A decisions
 
-## Increments
+The following decisions are implemented by `db/migrations/0002_atomic_job_offers.sql`:
 
-### 4a — Deployment (build first)
+1. One pending or accepted offer may exist for an application. Declined offers
+   remain as immutable history.
+2. HR may prepare a revision only after the latest live offer has been
+   declined. An identical retry of a still-pending offer returns the existing
+   offer ID and creates no duplicate history.
+3. Offer preparation is authorized by `deployment.manage`, not by broad
+   active-staff table access.
+4. `prepare_job_offer(...)` owns the transaction. It locks the application,
+   inserts the pending offer, moves `hired -> offered`, and writes
+   `job_offer_prepared` atomically.
+5. Employment type, PHP currency, schedule snapshots, and the actor are derived
+   by the database. The client cannot supply them.
+6. Salary grade and work schedule must match the posting employment type.
+   Salary must be positive and within the selected grade. Start date must be
+   later than the current date.
+7. `respond_to_job_offer(...)` locks the application and current offer before a
+   guarded pending-to-accepted/declined update, so two responses cannot both
+   succeed. The application remains `offered`; Increment B consumes the current
+   accepted offer.
+8. Direct authenticated mutations of `job_offers` are revoked. Authorized HR
+   users retain read access through a permission-scoped SELECT policy.
+9. Deployment remains fail-closed. Migration 0002 removes both
+   `hired -> deployed` and `offered -> deployed`; Increment C must add back only
+   the accepted-offer plus signed-contract transition.
 
-- Route `/dashboard/deployment`, gated `deployment.view`; nav item flips
-  `planned → ready`.
-- `src/services/deployment.ts`: `fetchHiredApplications()` (status `hired`,
-  no deployment record yet), `deployApplicant(input)` — insert
-  `deployment_records`, move the application to `deployed`, write
-  `application_history`, all guarded on the expected status the way
-  `interviews.ts` does.
-- `DeploymentPage` + `DeployApplicantDialog` (deployment date, branch, work
-  location, schedule, reporting manager, remarks), modelled on
-  `InterviewsPage` + `ScheduleInterviewDialog`.
-- Lookups: branches, work locations, work schedules. Confirm each is readable by
-  the acting role before wiring the selects — the same
-  security_invoker trap that made HR Staff see zero interviewers.
+The local database had zero offers when migration 0002 was applied, so the new
+required-field constraints and live-offer uniqueness rule did not require a
+data backfill.
 
-### 4b — Employee record (the POS hand-off)
+## Increment A application behavior
 
-- "Pending employees": `deployed` applications with no linked `employees` row.
-- `createEmployeeFromApplication()` — insert `employees` with
-  `application_id`, name/contact carried from `applicants`, plus
-  position/department/branch and employment type/status.
-- Surface on the existing Employees page (a "Pending" filter or banner) so the
-  new hire appears where employees already live rather than in a new silo.
-- **This is the POS hand-off**: once the employee row exists, POS consumes it —
-  never duplicate the record (PROJECT_CONTEXT: *Never duplicate employee records*).
+### HR preparation
 
-### 4c — Offers and contracts (optional, decide before building)
+- Recruitment includes Hired and Offered filters.
+- A user with `deployment.manage` can open a hired applicant and prepare an
+  offer. A declined offered applicant exposes the revised-offer action.
+- The form shows the posting employment type and PHP currency as read-only.
+- Salary grade and schedule options are filtered by posting employment type.
+- Grade, in-range monthly salary, schedule, and a future start date are
+  required. Benefits, additional compensation, and internal notes are optional.
+- The service makes one `prepare_job_offer` RPC call; it does not perform direct
+  offer, application, or history writes.
 
-Slice 3 sets `hired` directly, and the applicant-facing `respond_to_job_offer`
-RPC already exists. If offers become part of the flow: prepare offer → applicant
-accepts/declines on the Track page → contract → then deploy. Requires deciding
-whether `hired → deployed` should stop being legal (edit migration 0001).
+### Applicant response
 
-## Verification plan
+- The public tracking page displays the latest offer terms.
+- A pending offer can be accepted or declined. Decline requires one of the
+  fixed reasons and permits optional notes.
+- The response service normalizes the reference/email and calls only the
+  existing five-argument `respond_to_job_offer` RPC.
+- After a successful response the page refetches the tracked application and
+  removes the response actions.
 
-1. `tsc`, `lint`, `vitest run` with new service unit tests (mock Supabase, same
-   `vi.hoisted` pattern as `interviews.test.ts`).
-2. Extend `e2e/recruitment-pipeline.spec.ts` past `hired`: deploy the applicant,
-   create the employee record, and assert the new employee appears on the
-   Employees page — proving the whole chain from public application to POS-ready
-   employee in one test.
-3. Probe the new transitions with rolled-back psql transactions before trusting
-   the UI, as was done for Slice 3.
+## Existing backend used by later increments
+
+- `employment_contracts`: offer link, file path, status, start date, signed
+  timestamp/signer, terms, and policies.
+- Private `contracts` storage bucket: staff upload/read only; there is no client
+  delete policy, so upload-success/database-failure recovery still needs an
+  explicit design.
+- `deployment_records`: application, date, branch, work location, schedule,
+  manager snapshot, remarks, and actor.
+- `employees.application_id`: intended recruitment link, but not yet unique.
+- Existing application-history events include offer, contract, deployment, and
+  close events.
+
+## Remaining increments
+
+### Increment B - Contract
+
+- Begin only from the current accepted offer.
+- Decide whether contracts are one-per-offer or revisioned; prevent duplicate
+  current contracts either way.
+- Enforce draft -> printed -> signed in the database.
+- A signed contract must have a private storage path, signing timestamp, and
+  signer. Start date comes from the accepted offer.
+- Define idempotent upload retry/cleanup behavior before enabling the UI.
+- Keep status, contract row, and history changes atomic where they share the
+  database. Do not ignore history failures.
+
+### Increment C - Deployment
+
+- Do not wire the retained deployment scaffold into routing/navigation as-is.
+- Require the current accepted offer and signed contract before both inserting
+  a deployment record and moving `offered -> deployed`.
+- Derive deployment date from the accepted offer start date; it is read-only.
+- Require branch, a location belonging to that branch, and a compatible work
+  schedule.
+- Resolve the reporting-manager directory/ID model before building its picker.
+- Perform record insertion, application transition, and history insertion in
+  one permission-scoped transaction/RPC.
+
+### Increment D - Employee record
+
+- Pending employees are valid deployed applications without a linked employee.
+- Add database-backed uniqueness for `employees.application_id` before enabling
+  creation.
+- Create or return the existing employee atomically and map only approved
+  applicant, posting, accepted-offer, and deployment fields.
+- Map offer type `regular -> full_time` and `part_time -> part_time`; the offer
+  and employee enums are not the same.
+- Surface pending records on the existing Employees page.
+- Treat POS account/role/store membership as a separate decision unless the
+  user explicitly expands the definition of POS handoff.
+
+## Legacy and deferred decisions
+
+- Four legacy deployed applications have deployment records but no accepted
+  offer or signed contract. Leave them unchanged until the user chooses hide,
+  display-as-legacy, or explicit backfill.
+- Reporting manager is currently nullable text, while only one branch has a
+  manager ID. A safe manager directory and storage model are still unresolved.
+- Repeat applications reuse one applicant row, so later applicant contact and
+  document changes can rewrite evidence shown for older applications. This is a
+  separate data-model issue and has no safe frontend-only correction.
+
+## Verification standard
+
+1. Validate every migration in an explicit rollback transaction, then apply it
+   once without resetting or reseeding the database.
+2. Use service/unit tests for validation, authoritative RPC payloads, and error
+   mapping; keep database contract tests read-only.
+3. Use an explicit psql `BEGIN`/`ROLLBACK` fixture probe for atomic success and
+   failure paths. Do not consume live hired applications.
+4. Keep regular Playwright coverage deterministic and non-mutating by mocking
+   offer lookup/response/preparation requests.
+5. Finish each increment with typecheck, lint, full unit tests, database
+   contracts, build, focused Playwright, smoke tests, and `git diff --check`.
 
 ## Constraints
 
-No commit/push. No DB reset/reseed. Schema changes (if any) go in
-`db/migrations/`. `integration/` untouched. No colour changes. FMS untouched.
-Preserve POS behaviour — this slice feeds POS, it does not modify it.
+No commit or push. No database reset/reseed. `integration/` is read-only. FMS
+and unrelated POS/UI behavior stay untouched. Schema changes belong in forward
+migrations under `db/migrations/`.

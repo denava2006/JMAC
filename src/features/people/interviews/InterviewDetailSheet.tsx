@@ -1,8 +1,11 @@
-import { useEffect, useState, type ReactNode } from 'react'
+import { useMutation } from '@tanstack/react-query'
+import { Eye } from 'lucide-react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Drawer, DrawerContent, DrawerDescription, DrawerHeader, DrawerTitle } from '@/components/ui/drawer'
 import { applicationStatusLabel, applicationStatusVariant } from '@/lib/applicationLabels'
+import { ApplicantDetailSheet } from '@/features/people/recruitment/ApplicantDetailSheet'
 import {
   interviewStageLabel,
   interviewStatusLabel,
@@ -16,6 +19,8 @@ import {
 } from '@/services/interviews'
 import { EvaluateInterviewDialog } from '@/features/people/interviews/EvaluateInterviewDialog'
 import { ScheduleInterviewDialog } from '@/features/people/interviews/ScheduleInterviewDialog'
+import { toast } from '@/components/ui/toast'
+import { fetchApplication, type ApplicationRow } from '@/services/recruitment'
 
 function Field({ label, value }: { label: string; value: ReactNode }) {
   return (
@@ -167,20 +172,46 @@ export function InterviewDetailSheet({
 }) {
   const [scheduleStage, setScheduleStage] = useState<InterviewStage | null>(null)
   const [evaluation, setEvaluation] = useState<{ stage: InterviewStage; interviewId: string } | null>(null)
+  const [applicantDetails, setApplicantDetails] = useState<ApplicationRow | null>(null)
+  const activeApplicantRequest = useRef(0)
+  const interviewOpen = useRef(open)
+  interviewOpen.current = open
+
+  const applicant = useMutation({
+    mutationFn: ({ applicationId }: { applicationId: string; requestId: number }) => fetchApplication(applicationId),
+    onSuccess: (details, variables) => {
+      if (!interviewOpen.current || variables.requestId !== activeApplicantRequest.current) return
+      setApplicantDetails(details)
+      onOpenChange(false)
+    },
+    onError: (error, variables) => {
+      if (!interviewOpen.current || variables.requestId !== activeApplicantRequest.current) return
+      toast.error(error instanceof Error ? error.message : 'Could not load this application')
+    },
+  })
 
   useEffect(() => {
-    if (open) return
+    if (open) {
+      setApplicantDetails(null)
+      return
+    }
+    activeApplicantRequest.current += 1
     setScheduleStage(null)
     setEvaluation(null)
-  }, [open])
+  }, [application?.id, open])
 
   const initial = application ? getInterviewByStage(application.interviews, 'initial') : null
   const final = application ? getInterviewByStage(application.interviews, 'final') : null
   const action = application ? nextAction(application, initial, final, canManage, profileId) : null
 
+  const changeInterviewOpen = (nextOpen: boolean) => {
+    if (!nextOpen) activeApplicantRequest.current += 1
+    onOpenChange(nextOpen)
+  }
+
   return (
     <>
-      <Drawer open={open} onOpenChange={onOpenChange}>
+      <Drawer open={open} onOpenChange={changeInterviewOpen}>
         <DrawerContent side="right" className="w-full gap-0 overflow-y-auto sm:max-w-lg">
           <DrawerHeader className="p-0">
             {application ? (
@@ -211,6 +242,22 @@ export function InterviewDetailSheet({
                   <Field label="Position" value={application.positionTitle} />
                   <Field label="Department" value={application.department} />
                 </dl>
+                <div>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    disabled={applicant.isPending}
+                    onClick={() => {
+                      const requestId = activeApplicantRequest.current + 1
+                      activeApplicantRequest.current = requestId
+                      applicant.mutate({ applicationId: application.id, requestId })
+                    }}
+                  >
+                    <Eye aria-hidden="true" />
+                    {applicant.isPending ? 'Loading applicant…' : 'View applicant'}
+                  </Button>
+                </div>
               </section>
 
               <InterviewRound stage="initial" interview={initial} />
@@ -260,6 +307,13 @@ export function InterviewDetailSheet({
           stage={evaluation.stage}
         />
       ) : null}
+
+      <ApplicantDetailSheet
+        application={applicantDetails}
+        open={applicantDetails !== null}
+        onOpenChange={(nextOpen) => !nextOpen && setApplicantDetails(null)}
+        canScreen={false}
+      />
     </>
   )
 }

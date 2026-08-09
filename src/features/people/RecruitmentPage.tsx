@@ -1,7 +1,9 @@
 import { useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
+import { Eye } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Breadcrumb } from '@/components/ui/breadcrumb'
+import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { DataTable, type ColumnDef } from '@/components/ui/data-table'
 import { ErrorState } from '@/components/ui/error-state'
@@ -22,6 +24,8 @@ const STATUS_FILTERS = [
   { value: 'all', label: 'All applications' },
   { value: 'submitted', label: 'New' },
   { value: 'qualified', label: 'Qualified' },
+  { value: 'hired', label: 'Hired' },
+  { value: 'offered', label: 'Offered' },
   { value: 'rejected', label: 'Rejected' },
 ] as const
 
@@ -41,6 +45,7 @@ function StatCard({ label, value, variant }: { label: string; value: number; var
 export function RecruitmentPage() {
   const { authorization } = useAuth()
   const canScreen = can(authorization, 'applicant.screen')
+  const canPrepareOffer = can(authorization, 'deployment.manage')
 
   const [statusFilter, setStatusFilter] = useState<string>('all')
   const [selected, setSelected] = useState<ApplicationRow | null>(null)
@@ -93,6 +98,27 @@ export function RecruitmentPage() {
       id: 'applied',
       header: 'Applied',
       cell: ({ row }) => <span className="tabular text-body">{row.original.createdAt.slice(0, 10)}</span>,
+    },
+    {
+      id: 'actions',
+      header: '',
+      enableSorting: false,
+      cell: ({ row }) => (
+        <div className="flex justify-end">
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            onClick={(event) => {
+              event.stopPropagation()
+              setSelected(row.original)
+            }}
+          >
+            <Eye aria-hidden="true" />
+            View application
+          </Button>
+        </div>
+      ),
     },
   ]
 
@@ -148,6 +174,7 @@ export function RecruitmentPage() {
         open={selected !== null}
         onOpenChange={(open) => !open && setSelected(null)}
         canScreen={canScreen}
+        canPrepareOffer={canPrepareOffer}
       />
     </div>
   )

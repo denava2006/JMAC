@@ -1,5 +1,5 @@
 import { zodResolver } from '@hookform/resolvers/zod'
-import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useState } from 'react'
 import { Controller, useForm, useWatch } from 'react-hook-form'
 import { z } from 'zod'
@@ -19,8 +19,10 @@ import { Textarea } from '@/components/ui/textarea'
 import { toast } from '@/components/ui/toast'
 import { interviewStageLabel, type InterviewStage } from '@/lib/interviewLabels'
 import {
+  fetchInterviewLocations,
   interviewQueueQueryKey,
   interviewStatsQueryKey,
+  isMeetingUrl,
   scheduleInterview,
 } from '@/services/interviews'
 
@@ -34,15 +36,6 @@ function nextMinuteLocalValue(): string {
   nextMinute.setSeconds(0, 0)
   nextMinute.setMinutes(nextMinute.getMinutes() + 1)
   return localDatetimeValue(nextMinute)
-}
-
-function isHttpUrl(value: string): boolean {
-  try {
-    const url = new URL(value)
-    return url.protocol === 'http:' || url.protocol === 'https:'
-  } catch {
-    return false
-  }
 }
 
 const schema = z
@@ -65,18 +58,18 @@ const schema = z
 
     if (values.mode === 'online') {
       const link = values.meetingLink?.trim() ?? ''
-      if (!link || !isHttpUrl(link)) {
+      if (!link || !isMeetingUrl(link)) {
         context.addIssue({
           code: 'custom',
           path: ['meetingLink'],
-          message: 'Enter a valid http or https meeting link.',
+          message: 'Enter a valid https meeting link, for example https://meet.google.com/abc-defg.',
         })
       }
     } else if (!values.location?.trim()) {
       context.addIssue({
         code: 'custom',
         path: ['location'],
-        message: 'Enter the face-to-face interview location.',
+        message: 'Choose the branch and work location for this interview.',
       })
     }
   })
@@ -95,6 +88,14 @@ export function ScheduleInterviewDialog({
   stage: InterviewStage
 }) {
   const queryClient = useQueryClient()
+  // Only needed for a face-to-face interview, but harmless to prefetch while
+  // the dialog is open — it is a tiny, rarely changing list.
+  const locations = useQuery({
+    queryKey: ['people', 'interview-locations'],
+    queryFn: fetchInterviewLocations,
+    enabled: open,
+    staleTime: 60 * 60 * 1000,
+  })
   const [minDatetime, setMinDatetime] = useState('')
   const {
     control,
@@ -223,16 +224,53 @@ export function ScheduleInterviewDialog({
               <Label htmlFor={`${stage}-location`} required>
                 Location
               </Label>
-              <Input
-                id={`${stage}-location`}
-                placeholder="Branch, office, or room"
-                invalid={Boolean(errors.location)}
-                aria-describedby={errors.location ? `${stage}-location-error` : undefined}
-                {...register('location')}
+              {/* The places an interview can happen are already recorded as
+                  branch/work-location rows, so this picks from them rather than
+                  accepting a room name the applicant cannot act on. */}
+              <Controller
+                control={control}
+                name="location"
+                render={({ field }) => (
+                  <Select
+                    value={field.value ?? ''}
+                    onValueChange={field.onChange}
+                    disabled={locations.isPending || locations.isError || locations.data?.length === 0}
+                  >
+                    <SelectTrigger
+                      id={`${stage}-location`}
+                      aria-invalid={errors.location ? true : undefined}
+                      aria-describedby={
+                        errors.location
+                          ? `${stage}-location-error`
+                          : locations.isError || locations.data?.length === 0
+                            ? `${stage}-location-help`
+                            : undefined
+                      }
+                      className={errors.location ? 'border-error' : undefined}
+                    >
+                      <SelectValue placeholder={locations.isPending ? 'Loading…' : 'Select a location'} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {(locations.data ?? []).map((option) => (
+                        <SelectItem key={option.label} value={option.label}>
+                          {option.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
               />
               {errors.location ? (
                 <p id={`${stage}-location-error`} className="text-xs text-error">
                   {errors.location.message}
+                </p>
+              ) : locations.isError ? (
+                <p id={`${stage}-location-help`} className="text-xs text-error">
+                  Could not load locations. Refresh and try again.
+                </p>
+              ) : locations.data?.length === 0 ? (
+                <p id={`${stage}-location-help`} className="text-xs text-muted-foreground">
+                  No active work locations are configured yet.
                 </p>
               ) : null}
             </div>

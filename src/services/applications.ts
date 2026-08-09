@@ -1,4 +1,6 @@
 import { supabase } from '@/lib/supabase'
+import { OFFER_DECLINE_REASONS, type OfferDeclineReason, type OfferStatus } from '@/lib/applicationLabels'
+import type { JobEmploymentType } from '@/lib/jobPostingLabels'
 
 /**
  * Public job applications.
@@ -19,6 +21,30 @@ import { supabase } from '@/lib/supabase'
  */
 function normalizeEmail(email: string): string {
   return email.trim().toLowerCase()
+}
+
+/**
+ * Capitalises a name the way it is written down, at save time rather than in
+ * the display layer — the stored value is what Recruitment, Interviews, the
+ * offer, the contract and the employee record all read, so fixing it in CSS
+ * would leave every downstream document showing "clark de nava".
+ *
+ * Each whitespace- or hyphen-separated part gets an initial capital and a
+ * lowercase remainder: "de nava" -> "De Nava", "mary jane" -> "Mary Jane",
+ * "SMITH-JONES" -> "Smith-Jones", "o'brien" -> "O'Brien". Internal runs of
+ * whitespace collapse to one space.
+ *
+ * This is deliberately mechanical. Names that are genuinely not
+ * initial-capitalised (van der Berg, McDonald) are left to HR to correct on the
+ * employee record; guessing at those rules would mangle more names than it
+ * fixed.
+ */
+export function normalizeName(name: string): string {
+  return name
+    .trim()
+    .replace(/\s+/g, ' ')
+    .toLowerCase()
+    .replace(/(^|[\s'-])(\p{L})/gu, (_match, boundary: string, letter: string) => boundary + letter.toUpperCase())
 }
 
 const ALLOWED_RESUME_TYPES = [
@@ -80,9 +106,9 @@ export async function submitApplication(
 
   const { data, error } = await supabase.rpc('submit_job_application', {
     p_job_posting_id: input.jobPostingId,
-    p_first_name: input.firstName,
-    p_middle_name: input.middleName || undefined,
-    p_last_name: input.lastName,
+    p_first_name: normalizeName(input.firstName),
+    p_middle_name: input.middleName ? normalizeName(input.middleName) : undefined,
+    p_last_name: normalizeName(input.lastName),
     p_email: normalizeEmail(input.email),
     p_phone: input.phone,
     p_address: input.street,
@@ -117,6 +143,16 @@ interface LookupRow {
   interview_location: string | null
   interview_meeting_link: string | null
   interview_status: string | null
+  offer_id: string | null
+  offer_status: OfferStatus | null
+  offer_employment_type: JobEmploymentType | null
+  offer_salary: number | null
+  offer_currency: string | null
+  offer_start_date: string | null
+  offer_working_hours: string | null
+  offer_working_days: string | null
+  offer_benefits: string | null
+  offer_additional_compensation: string | null
 }
 
 export interface TrackedApplication {
@@ -134,6 +170,18 @@ export interface TrackedApplication {
     location: string | null
     meetingLink: string | null
     status: string | null
+  } | null
+  offer: {
+    id: string
+    status: OfferStatus
+    employmentType: JobEmploymentType | null
+    salary: number | null
+    currency: string | null
+    startDate: string | null
+    workingHours: string | null
+    workingDays: string | null
+    benefits: string | null
+    additionalCompensation: string | null
   } | null
 }
 
@@ -171,5 +219,71 @@ export async function trackApplication(referenceCode: string, email: string): Pr
           status: row.interview_status,
         }
       : null,
+    offer: row.offer_id && row.offer_status
+      ? {
+          id: row.offer_id,
+          status: row.offer_status,
+          employmentType: row.offer_employment_type,
+          salary: row.offer_salary,
+          currency: row.offer_currency,
+          startDate: row.offer_start_date,
+          workingHours: row.offer_working_hours,
+          workingDays: row.offer_working_days,
+          benefits: row.offer_benefits,
+          additionalCompensation: row.offer_additional_compensation,
+        }
+      : null,
   }
+}
+
+export interface RespondToJobOfferInput {
+  referenceCode: string
+  email: string
+  decision: 'accepted' | 'declined'
+  declineReason?: OfferDeclineReason
+  declineNotes?: string
+}
+
+const RESPONSE_ERROR_MESSAGES: Array<[string, string]> = [
+  ['NOT_FOUND', 'No application matches that reference number and email address.'],
+  ['NO_OFFER', 'No job offer is available for this application.'],
+  ['OFFER_NOT_AVAILABLE', 'This job offer is no longer available.'],
+  ['ALREADY_RESPONDED', 'This job offer has already been answered. Refresh to see its current status.'],
+  ['INVALID_DECISION', 'Choose whether to accept or decline the offer.'],
+  ['DECLINE_REASON_REQUIRED', 'Choose a reason for declining the offer.'],
+  ['INVALID_DECLINE_REASON', 'Choose one of the available decline reasons.'],
+  ['INVALID_DECLINE_DETAILS', 'Decline details can only be sent when declining an offer.'],
+]
+
+function responseError(message: string): Error {
+  const match = RESPONSE_ERROR_MESSAGES.find(([code]) => message.includes(code))
+  return new Error(match?.[1] ?? 'We couldn’t record your response. Please try again.')
+}
+
+export async function respondToJobOffer(input: RespondToJobOfferInput): Promise<'accepted' | 'declined'> {
+  const referenceCode = input.referenceCode.trim()
+  const email = normalizeEmail(input.email)
+  if (!referenceCode || !email) throw new Error('Enter your reference number and email address again.')
+
+  const reason = input.declineReason?.trim()
+  if (input.decision === 'declined' && !reason) {
+    throw new Error('Choose a reason for declining the offer.')
+  }
+  if (reason && !OFFER_DECLINE_REASONS.includes(reason as OfferDeclineReason)) {
+    throw new Error('Choose one of the available decline reasons.')
+  }
+
+  const { data, error } = await supabase.rpc('respond_to_job_offer', {
+    p_reference_code: referenceCode,
+    p_email: email,
+    p_decision: input.decision,
+    p_decline_reason: input.decision === 'declined' ? reason : undefined,
+    p_decline_notes: input.decision === 'declined' ? input.declineNotes?.trim() || undefined : undefined,
+  })
+
+  if (error) throw responseError(error.message)
+  if (data !== 'accepted' && data !== 'declined') {
+    throw new Error('Your response was received, but its status could not be confirmed.')
+  }
+  return data
 }
