@@ -102,7 +102,7 @@ export interface ApplicationStats {
 }
 
 export async function fetchApplicationStats(): Promise<ApplicationStats> {
-  const countBy = async (status: string): Promise<number> => {
+  const countBy = async (status: 'submitted' | 'qualified' | 'rejected'): Promise<number> => {
     const { count, error } = await supabase
       .from('applications')
       .select('*', { count: 'exact', head: true })

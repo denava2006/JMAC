@@ -64,7 +64,7 @@ export const APPLICANT_STATUS_COPY: Record<ApplicationStatus, { label: string; d
   },
   interview_scheduled: {
     label: 'Interview scheduled',
-    detail: 'Your interview details are below — please make a note of the date and time.',
+    detail: 'Your application is in the interview stage. Scheduled interview details appear below when available.',
   },
   offered: {
     label: 'Job offer',

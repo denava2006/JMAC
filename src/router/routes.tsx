@@ -32,6 +32,9 @@ const JobPostingsPage = lazy(() =>
 const RecruitmentPage = lazy(() =>
   import('@/features/people/RecruitmentPage').then((m) => ({ default: m.RecruitmentPage }))
 )
+const InterviewsPage = lazy(() =>
+  import('@/features/people/InterviewsPage').then((m) => ({ default: m.InterviewsPage }))
+)
 const ComponentGallery = lazy(() => import('@/app/ComponentGallery'))
 const LandingPage = lazy(() =>
   import('@/features/landing/LandingPage').then((m) => ({ default: m.LandingPage }))
@@ -213,6 +216,16 @@ export function AppRoutes() {
             <RequirePermission permission="applicant.screen">
               <Lazy>
                 <RecruitmentPage />
+              </Lazy>
+            </RequirePermission>
+          }
+        />
+        <Route
+          path="/dashboard/interviews"
+          element={
+            <RequirePermission permission="interview.manage">
+              <Lazy>
+                <InterviewsPage />
               </Lazy>
             </RequirePermission>
           }

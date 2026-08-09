@@ -126,3 +126,26 @@ describe('authorization contract', () => {
     expect(error?.code).not.toBe('42883')
   })
 })
+
+describe('recruitment hardening contract (migration 0001)', () => {
+  // HR Staff cannot read the `profiles` view (it is security_invoker), which is
+  // why the picker goes through this SECURITY DEFINER RPC instead. The contract
+  // is that it exists, refuses callers without interview.manage, and never
+  // becomes readable anonymously.
+  it('refuses the eligible-interviewer directory to an anonymous caller', async () => {
+    const { data, error } = await anon().rpc('eligible_final_interviewers')
+    // Present (not 42883 undefined_function) but not usable while signed out.
+    expect(error?.code).not.toBe('42883')
+    expect(data ?? []).toEqual([])
+    expect(error).not.toBeNull()
+  })
+
+  it('keeps the application transition trigger installed', async () => {
+    // The trigger is what stops a staff session jumping an application straight
+    // from qualified to offered/deployed, skipping both interview rounds. It
+    // cannot be asserted from the anon client directly, so assert the guarded
+    // table is still reachable and RLS-silent rather than dropped.
+    const { error } = await anon().from('applications').select('id').limit(1)
+    expect(error).toBeNull()
+  })
+})

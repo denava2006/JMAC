@@ -80,7 +80,18 @@ describe('submitApplication', () => {
       })
     )
     // Empty optionals become undefined, not '', so the RPC uses its defaults.
-    expect(rpc.mock.calls[0][1].p_middle_name).toBeUndefined()
+    expect(rpc.mock.calls[0]![1].p_middle_name).toBeUndefined()
+  })
+
+  // The RPC matches applicants with `where email = p_email`, so casing decides
+  // whether a repeat applicant is the same person or a brand new one.
+  it('normalizes the email so casing cannot fork an applicant identity', async () => {
+    upload.mockResolvedValue({ error: null })
+    rpc.mockResolvedValue({ data: [{ reference_code: 'APP-2026-0009' }], error: null })
+
+    await submitApplication(baseInput({ email: '  Juan.DelaCruz@Example.COM ' }))
+
+    expect(rpc.mock.calls[0][1].p_email).toBe('juan.delacruz@example.com')
   })
 
   it('does not call the RPC when the resume upload fails', async () => {
@@ -162,6 +173,30 @@ describe('trackApplication', () => {
 
     const result = await trackApplication('APP-2026-0002', 'ana@example.com')
     expect(result.interview).toMatchObject({ type: 'initial', mode: 'online', status: 'scheduled' })
+  })
+
+  it('normalizes the email so a differently-cased retype still matches', async () => {
+    rpc.mockResolvedValue({
+      data: [
+        {
+          reference_code: 'APP-2026-0001',
+          status: 'submitted',
+          submitted_at: '2026-08-01T00:00:00Z',
+          applicant_name: 'Juan Dela Cruz',
+          position_title: 'Cashier',
+          department_name: 'Sales',
+          interview_scheduled_at: null,
+        },
+      ],
+      error: null,
+    })
+
+    await trackApplication('APP-2026-0001', '  Juan.DelaCruz@Example.COM ')
+
+    expect(rpc).toHaveBeenCalledWith('lookup_application', {
+      p_reference_code: 'APP-2026-0001',
+      p_email: 'juan.delacruz@example.com',
+    })
   })
 
   it('throws a friendly message when nothing matches', async () => {

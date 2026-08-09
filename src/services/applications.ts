@@ -9,6 +9,18 @@ import { supabase } from '@/lib/supabase'
  * here needs a session — a candidate applies without an account.
  */
 
+/**
+ * Applicant identity is the email address, and `submit_job_application` matches
+ * it with a plain `where email = p_email` — no case folding. Left as typed,
+ * "Juan@Example.com" and "juan@example.com" become two different applicants,
+ * and an applicant who capitalises differently when tracking cannot find the
+ * application they just submitted. Normalising on the way in and on lookup
+ * keeps one person to one record on every path this client owns.
+ */
+function normalizeEmail(email: string): string {
+  return email.trim().toLowerCase()
+}
+
 const ALLOWED_RESUME_TYPES = [
   'application/pdf',
   'application/msword',
@@ -71,7 +83,7 @@ export async function submitApplication(
     p_first_name: input.firstName,
     p_middle_name: input.middleName || undefined,
     p_last_name: input.lastName,
-    p_email: input.email,
+    p_email: normalizeEmail(input.email),
     p_phone: input.phone,
     p_address: input.street,
     p_province: input.province,
@@ -133,7 +145,7 @@ export interface TrackedApplication {
 export async function trackApplication(referenceCode: string, email: string): Promise<TrackedApplication> {
   const { data, error } = await supabase.rpc('lookup_application', {
     p_reference_code: referenceCode.trim(),
-    p_email: email.trim(),
+    p_email: normalizeEmail(email),
   })
   if (error) {
     throw new Error('We couldn’t check that application right now. Please try again.')

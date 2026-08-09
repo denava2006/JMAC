@@ -1,5 +1,5 @@
 import * as React from 'react'
-import { useMutation } from '@tanstack/react-query'
+import { useQuery } from '@tanstack/react-query'
 import { Link, useLocation } from 'react-router-dom'
 import { AlertCircle, ArrowLeft, CalendarClock, Search } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
@@ -24,8 +24,25 @@ function DetailRow({ label, value }: { label: string; value: React.ReactNode }) 
   )
 }
 
+function interviewModeLabel(mode: string | null): string | null {
+  if (mode === 'face_to_face') return 'Face-to-face'
+  if (mode === 'online') return 'Online'
+  return mode
+}
+
+function safeHttpUrl(value: string | null): string | null {
+  if (!value) return null
+  try {
+    const url = new URL(value)
+    return url.protocol === 'http:' || url.protocol === 'https:' ? url.toString() : null
+  } catch {
+    return null
+  }
+}
+
 function StatusResult({ application }: { application: TrackedApplication }) {
   const copy = applicantStatusCopy(application.status)
+  const meetingLink = safeHttpUrl(application.interview?.meetingLink ?? null)
   return (
     <Card className="mt-6">
       <CardContent className="flex flex-col gap-5 p-6">
@@ -57,14 +74,14 @@ function StatusResult({ application }: { application: TrackedApplication }) {
                   ) : null
                 }
               />
-              <DetailRow label="Mode" value={application.interview.mode} />
+              <DetailRow label="Mode" value={interviewModeLabel(application.interview.mode)} />
               <DetailRow label="Location" value={application.interview.location} />
               <DetailRow
                 label="Link"
                 value={
-                  application.interview.meetingLink ? (
+                  meetingLink ? (
                     <a
-                      href={application.interview.meetingLink}
+                      href={meetingLink}
                       target="_blank"
                       rel="noreferrer"
                       className="text-primary underline underline-offset-2 hover:no-underline"
@@ -88,23 +105,41 @@ export function TrackApplicationPage() {
   const [referenceCode, setReferenceCode] = React.useState(prefill.referenceCode ?? '')
   const [email, setEmail] = React.useState(prefill.email ?? '')
 
-  const lookup = useMutation({ mutationFn: () => trackApplication(referenceCode, email) })
+  // The credentials actually being looked up, as opposed to what is currently
+  // typed. Arriving from the success page carries both, so the status resolves
+  // without the applicant retyping what they just submitted.
+  //
+  // This is a query rather than a mutation fired from an effect: an effect that
+  // calls mutate() on mount loses its result to StrictMode's mount/unmount/
+  // remount, which left the page stuck on "Checking…" even though the request
+  // returned 200. `enabled` expresses "look up only once we have credentials"
+  // directly, and matches the HRMS applicant-portal reference.
+  const [credentials, setCredentials] = React.useState<{ referenceCode: string; email: string } | null>(
+    prefill.referenceCode && prefill.email
+      ? { referenceCode: prefill.referenceCode, email: prefill.email }
+      : null
+  )
 
-  // Arriving straight from the success page (reference + email in state) looks
-  // up the status immediately, so the applicant does not retype what they just
-  // submitted.
-  const autoRan = React.useRef(false)
-  React.useEffect(() => {
-    if (!autoRan.current && prefill.referenceCode && prefill.email) {
-      autoRan.current = true
-      lookup.mutate()
-    }
-  }, [prefill.referenceCode, prefill.email, lookup])
+  const lookup = useQuery({
+    queryKey: ['application-tracking', credentials?.referenceCode, credentials?.email],
+    queryFn: () => trackApplication(credentials!.referenceCode, credentials!.email),
+    enabled: credentials !== null,
+    retry: false,
+    // An applicant checking again wants the current status, not a cached one.
+    staleTime: 0,
+  })
 
   const onSubmit = (event: React.FormEvent) => {
     event.preventDefault()
-    if (!referenceCode.trim() || !email.trim()) return
-    lookup.mutate()
+    const next = { referenceCode: referenceCode.trim(), email: email.trim() }
+    if (!next.referenceCode || !next.email) return
+    // Re-checking the same application changes no key, so ask for a refetch
+    // explicitly rather than waiting for a change that will not come.
+    if (credentials?.referenceCode === next.referenceCode && credentials.email === next.email) {
+      void lookup.refetch()
+      return
+    }
+    setCredentials(next)
   }
 
   return (
@@ -161,9 +196,11 @@ export function TrackApplicationPage() {
               </div>
             ) : null}
 
-            <Button type="submit" disabled={lookup.isPending || !referenceCode.trim() || !email.trim()}>
+            {/* isFetching, not isPending: a disabled query reports "pending"
+                forever, which would leave the button permanently disabled. */}
+            <Button type="submit" disabled={lookup.isFetching || !referenceCode.trim() || !email.trim()}>
               <Search aria-hidden="true" />
-              {lookup.isPending ? 'Checking…' : 'Check status'}
+              {lookup.isFetching ? 'Checking…' : 'Check status'}
             </Button>
           </form>
         </CardContent>

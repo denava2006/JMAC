@@ -73,7 +73,7 @@ export const NAVIGATION: NavItem[] = [
     status: 'ready',
     section: 'People',
   },
-  { label: 'Interviews', icon: 'CalendarSearch', to: '/dashboard/interviews', permissions: ['interview.manage'], status: 'planned', section: 'People' },
+  { label: 'Interviews', icon: 'CalendarSearch', to: '/dashboard/interviews', permissions: ['interview.manage'], status: 'ready', section: 'People' },
   { label: 'Deployment', icon: 'Truck', to: '/dashboard/deployment', permissions: ['deployment.view'], status: 'planned', section: 'People' },
   { label: 'Employees', icon: 'Users', to: '/dashboard/employees', permissions: ['employee.view'], status: 'ready', section: 'People' },
   { label: 'Attendance', icon: 'CalendarClock', to: '/dashboard/attendance', permissions: ['attendance.view'], status: 'planned', section: 'People' },

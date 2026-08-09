@@ -1,4 +1,5 @@
 # PROJECT_CONTEXT.md
+
 # JMAC Enterprise Platform
 ---
 # Project Overview
@@ -518,24 +519,6 @@ For every requested feature:
 6. Do not duplicate logic.
 7. Do not duplicate components.
 ---
-# Claude Skills
-
-Use installed Claude Skills whenever applicable.
-
-Priority
-
-1. UI/UX Design
-2. React
-3. TypeScript
-4. Tailwind CSS
-5. shadcn/ui
-6. Supabase
-7. PostgreSQL
-8. Documentation
-9. Refactoring
-10. Performance Optimization
-
-Always prioritize skill-based solutions over generic generation.
 ---
 # Future Expansion
 
@@ -635,33 +618,6 @@ Before handing work from Claude to Codex or from Codex to Claude:
 6. Do not redo work that is already complete.
 7. Do not blindly apply review findings; verify each finding against the current implementation first.
 
-### Git Rules
-
-AI agents may modify local files but must not commit or push.
-
-Only the user is responsible for:
-- staging files
-- creating commits
-- pushing to GitHub
-- merging branches
-
-Before editing, inspect the current Git state.
-
-After editing:
-1. List all modified files.
-2. Explain the purpose of each modification.
-3. Report any new or deleted files.
-4. Report whether the working tree contains unrelated changes.
-
-Do not:
-- run `git commit`
-- run `git push`
-- force push
-- reset the repository
-- delete branches
-- rewrite Git history
-- discard unrelated user changes
-
 ### Database and Data Safety
 
 Do not reset, recreate, wipe, or reseed the database unless the user explicitly requests it.
@@ -756,35 +712,6 @@ When Playwright finds an issue:
 5. Rerun the affected test.
 6. Run broader regression tests when appropriate.
 
-### Review Workflow
-
-After Claude completes a substantial implementation, Codex should review the current Git diff.
-
-Codex review should focus on:
-- correctness
-- regressions
-- TypeScript issues
-- security
-- authentication
-- authorization
-- RLS
-- database safety
-- race conditions
-- data integrity
-- POS/HRMS module boundaries
-- duplicated logic
-- future FMS compatibility
-- test coverage
-
-Review findings should be written to `CODEX_FINDINGS.md` or copied into `AI_HANDOFF.md`.
-
-Each finding should be classified as:
-- confirmed
-- false positive
-- already fixed
-- deferred
-
-Do not automatically modify production code based only on a review finding.
 
 ### Completion Requirements
 

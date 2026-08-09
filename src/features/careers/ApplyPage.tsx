@@ -13,7 +13,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Loader } from '@/components/ui/loader'
 import { Textarea } from '@/components/ui/textarea'
-import { AddressFields, EMPTY_ADDRESS, type AddressValue } from '@/components/AddressFields'
+import { AddressFields, type AddressValue } from '@/components/AddressFields'
 import { cn } from '@/lib/utils'
 import {
   EMPLOYMENT_TYPE_LABEL,
